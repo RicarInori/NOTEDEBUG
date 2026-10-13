@@ -54,7 +54,11 @@ flutter {
 // actually contains the kernel instead of only the Flutter shell. The NDK path comes from the value
 // AGP already resolved (`ndkVersion` above) rather than an absolute path committed to the repo, and
 // `cargo ndk` receives it through ANDROID_NDK_HOME.
-val rustAbis = listOf("arm64-v8a", "x86_64")
+// Every ABI the app ships an APK for must be listed here. `--split-per-abi` will happily emit an
+// armeabi-v7a APK that contains the Flutter shell and no Rust host at all, and the resulting app
+// fails at `RustLib.init()` on a 32-bit device rather than at build time — so the two lists have to
+// agree, and this one is the one that decides.
+val rustAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
 val buildRustHost = tasks.register<Exec>("buildRustHost") {
     group = "build"
