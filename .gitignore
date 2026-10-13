@@ -1,0 +1,39 @@
+# Rust
+/target
+**/*.rs.bk
+# Cargo.lock is intentionally committed: this workspace ships binaries (the host library and
+# its frb cdylib), so the lockfile is what makes builds reproducible.
+
+# Flutter / Dart
+app/.dart_tool/
+app/.packages
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/ios/Pods/
+app/macos/Pods/
+app/linux/flutter/ephemeral/
+app/windows/flutter/ephemeral/
+app/android/.gradle/
+app/android/local.properties
+app/android/app/src/main/jniLibs/
+
+# flutter_rust_bridge generated code (regenerate with flutter_rust_bridge_codegen generate)
+app/lib/bridge/frb_generated.dart
+app/lib/bridge/frb_generated.io.dart
+app/rust/src/frb_generated.rs
+
+# WASM extension build output
+extensions/**/target/
+extensions/**/*.wasm
+
+# Release artifacts (built APKs). Staged here so `flutter clean` cannot remove them, and kept
+# out of git because a debug APK is ~150 MB — it belongs in a GitHub Release, not in history.
+/dist/
+
+# Editors / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

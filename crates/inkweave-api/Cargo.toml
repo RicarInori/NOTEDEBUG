@@ -1,0 +1,13 @@
+[package]
+name = "inkweave-api"
+description = "Definition layer: the service traits and data types every Inkweave plugin agrees on."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cordis-rs.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true

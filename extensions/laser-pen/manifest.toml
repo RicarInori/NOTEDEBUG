@@ -1,0 +1,29 @@
+# Extension manifest (DEV guide §7.2).
+# Internal modules and extensions share this schema; only `kind` differs.
+
+[plugin]
+id = "com.inkweave.example.laser-pen"
+name = "激光笔"
+version = "0.1.0"
+kind = "wasm"
+entry = "laser_pen.wasm"
+author = "Inkweave"
+description = "演示用激光笔笔刷：纯表现、无持久化，适合作为 ABI 验证的最小示例"
+abi = "inkweave_abi_v1"
+
+[inject]
+required = ["ink"]
+
+# A laser pointer needs nothing from the platform. This is the point: the first ABI example
+# should exercise the sandbox without asking for anything sensitive.
+[permissions]
+network = false
+filesystem = false
+clipboard = false
+
+[contributes]
+events_listen = ["ink/stroke-committed"]
+
+[[contributes.commands]]
+id = "laser.toggle"
+title = "激光笔"

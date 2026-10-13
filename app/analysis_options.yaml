@@ -1,0 +1,12 @@
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # The control panel renders plugin-provided contributions; keep them documented.
+    public_member_api_docs: false
+    prefer_final_locals: true
+    avoid_print: true

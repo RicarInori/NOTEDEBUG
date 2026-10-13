@@ -1,0 +1,13 @@
+[package]
+name = "laser-pen"
+description = "Inkweave WASM extension example: a temporary laser pointer brush."
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+# Detached from the host workspace on purpose: extensions are built independently to
+# `wasm32-unknown-unknown` and never link against the host crates.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]

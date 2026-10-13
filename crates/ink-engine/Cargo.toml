@@ -1,0 +1,11 @@
+[package]
+name = "ink-engine"
+description = "Stroke pipeline, tools and wgpu canvas rendering. Placeholder until M1."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cordis-rs.workspace = true
+inkweave-api.workspace = true

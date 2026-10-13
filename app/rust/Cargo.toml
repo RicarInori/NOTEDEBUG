@@ -1,0 +1,27 @@
+[package]
+name = "inkweave_bridge"
+description = "Host composition root: builds the kernel, registers the preset plugins, exposes the frb API."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[dependencies]
+cordis-rs.workspace = true
+inkweave-api.workspace = true
+plugin-manager.workspace = true
+stylus-drivers.workspace = true
+sync-webdav.workspace = true
+ink-engine.workspace = true
+pdfium-engine.workspace = true
+storage-sqlite.workspace = true
+ext-loader.workspace = true
+nbk-migrate.workspace = true
+
+async-trait.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }

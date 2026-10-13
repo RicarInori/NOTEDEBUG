@@ -1,0 +1,21 @@
+[package]
+name = "plugin-manager"
+description = "The unified control panel's backend: a PluginRegistry provider mounted like any other plugin."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# The WASM sandbox is an M6 work item (the host-function ABI is a 2-3 week design task).
+# Until it lands, `install` validates a package fully and then reports that the runtime is absent.
+default = []
+wasm-runtime = []
+
+[dependencies]
+cordis-rs.workspace = true
+inkweave-api.workspace = true
+async-trait.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+toml.workspace = true

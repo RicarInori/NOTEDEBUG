@@ -1,0 +1,128 @@
+// TEMPLATE — not compiled. Rename to `frb_plugin_repository.dart` after generating the bindings.
+//
+//   cd app && flutter_rust_bridge_codegen generate
+//
+// Then flip the one line in lib/main.dart from `DemoPluginRepository()` to
+// `FrbPluginRepository()`. The generated files land in lib/bridge/ and rust/src/frb_generated.rs.
+//
+// The method names below mirror `app/rust/src/api/mod.rs` exactly: the bridge is a thin delegate,
+// so the control panel renders the same registry the Rust host exposes — there is no parallel
+// management model to keep in sync.
+
+import '../data/models.dart';
+import '../data/plugin_repository.dart';
+import 'frb_generated.dart';
+
+class FrbPluginRepository implements PluginRepository {
+  @override
+  Future<void> bootstrap() async {
+    // dataDir comes from path_provider on the Dart side; the host owns subdirectories under it.
+    await RustLib.init();
+    await bootstrapHost(dataDir: await _dataDir());
+  }
+
+  @override
+  Future<List<PluginCard>> cards() async {
+    final cards = await pluginCards();
+    return cards.map(_toCard).toList();
+  }
+
+  @override
+  Future<void> setEnabled(String id, bool enabled) =>
+      setPluginEnabled(id: id, enabled: enabled);
+
+  @override
+  Future<PluginCard> install(String packagePath, Permissions accepted) async {
+    final installed = await installExtension(
+      packagePath: packagePath,
+      network: accepted.network,
+      filesystem: accepted.filesystem,
+      clipboard: accepted.clipboard,
+    );
+    return _toCard(installed);
+  }
+
+  @override
+  Future<void> uninstall(String id) => uninstallExtension(id: id);
+
+  @override
+  Future<List<String>> log(String id, {int lines = 40}) =>
+      pluginLog(id: id, lines: lines);
+
+  @override
+  Future<MemorySummary> memory() async {
+    final summary = await memorySummary();
+    return MemorySummary(
+      processUsedMb: summary.processUsedMb,
+      pressure: summary.pressure,
+      overBudget: summary.overBudget,
+    );
+  }
+
+  @override
+  Future<List<TaskSummary>> tasks() async {
+    final tasks = await schedulerTasks();
+    return tasks
+        .map((task) => TaskSummary(
+              owner: task.owner,
+              task: task.task,
+              periodic: task.periodic,
+              intervalMinutes: task.intervalMinutes,
+              requiresUnmetered: task.requiresUnmetered,
+            ))
+        .toList();
+  }
+
+  // The generated types carry the same fields as the mirrors in lib/data/models.dart; this is the
+  // single place the two representations meet.
+  PluginCard _toCard(dynamic source) => PluginCard(
+        id: source.id as String,
+        name: source.name as String,
+        version: source.version as String,
+        kind: (source.kind.toString().contains('wasm'))
+            ? PluginKind.wasm
+            : PluginKind.internal,
+        state: _toState(source.state.toString()),
+        author: source.author as String,
+        description: source.description as String,
+        permissions: Permissions(
+          network: source.permissions.network as bool,
+          filesystem: source.permissions.filesystem as bool,
+          clipboard: source.permissions.clipboard as bool,
+        ),
+        capabilities: StylusCapabilities(
+          pressure: source.capabilities.pressure as bool,
+          tilt: source.capabilities.tilt as bool,
+          hover: source.capabilities.hover as bool,
+          eraser: source.capabilities.eraser as bool,
+          predictStroke: source.capabilities.predictStroke as bool,
+          recognizeShape: source.capabilities.recognizeShape as bool,
+          recognizeHandwriting: source.capabilities.recognizeHandwriting as bool,
+        ),
+        memoryBudgetMb: source.memoryBudgetMb as int,
+        memoryUsedMb: source.memoryUsedMb as int,
+        backgroundTasks: source.backgroundTasks as int,
+        contributions: (source.contributions as List<dynamic>)
+            .map((entry) => Contribution(
+                  id: entry.id as String,
+                  title: entry.title as String,
+                  kind: ContributionKind.settingsView,
+                ))
+            .toList(),
+        lastError: source.lastError as String?,
+      );
+
+  PluginRuntimeState _toState(String raw) {
+    if (raw.contains('pending')) return PluginRuntimeState.pending;
+    if (raw.contains('loading')) return PluginRuntimeState.loading;
+    if (raw.contains('active')) return PluginRuntimeState.active;
+    if (raw.contains('failed')) return PluginRuntimeState.failed;
+    if (raw.contains('unloading')) return PluginRuntimeState.unloading;
+    if (raw.contains('disposed')) return PluginRuntimeState.disposed;
+    return PluginRuntimeState.installed;
+  }
+
+  Future<String> _dataDir() async => throw UnimplementedError(
+        'Wire up path_provider: getApplicationSupportDirectory()',
+      );
+}

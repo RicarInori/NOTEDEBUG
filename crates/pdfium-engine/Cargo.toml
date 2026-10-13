@@ -1,0 +1,11 @@
+[package]
+name = "pdfium-engine"
+description = "PDFium handle pool, tile rendering, annotation and export. Placeholder until M3."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cordis-rs.workspace = true
+inkweave-api.workspace = true

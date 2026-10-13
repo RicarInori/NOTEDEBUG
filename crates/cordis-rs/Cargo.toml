@@ -1,0 +1,17 @@
+[package]
+name = "cordis-rs"
+description = "Cordis-style microkernel: Context tree, Fiber state machine, revertible effects, typed event bus."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+arc-swap.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }

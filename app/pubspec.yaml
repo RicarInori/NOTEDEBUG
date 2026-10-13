@@ -1,0 +1,29 @@
+name: inkweave
+description: Cordis-style plugin-based handwriting notebook. Flutter UI over a Rust kernel.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Bridge to the Rust host. The generated bindings are produced by
+  # `flutter_rust_bridge_codegen generate`; see README.md.
+  flutter_rust_bridge: ^2.0.0
+
+  # "Add plugin" entry (§8.4): pick a WASM extension package from the device.
+  # Must stay recent: older majors pin an outdated compileSdk in their Android module, which
+  # fails AGP's AAR metadata check against flutter_plugin_android_lifecycle (>= 36).
+  file_picker: ^13.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

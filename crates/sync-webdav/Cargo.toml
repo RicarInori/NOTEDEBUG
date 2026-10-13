@@ -1,0 +1,16 @@
+[package]
+name = "sync-webdav"
+description = "Preset plugin: WebDAV synchronisation provider with the six-state sync machine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cordis-rs.workspace = true
+inkweave-api.workspace = true
+async-trait.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }

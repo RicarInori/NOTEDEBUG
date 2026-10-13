@@ -1,0 +1,10 @@
+[toolchain]
+# Pinned because the dependency graph resolves to crates that require `edition2024`
+# (stabilised in Rust 1.85). Pinning keeps every machine and CI on the same compiler.
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+
+# Android is the primary shipping target; install these with:
+#   rustup target add aarch64-linux-android x86_64-linux-android aarch64-apple-ios
+# They are listed here as documentation rather than as `targets = [...]`, so that a desktop-only
+# checkout does not fail to initialise when a platform target is unavailable.

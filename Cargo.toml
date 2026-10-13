@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/cordis-rs",
+  "crates/inkweave-api",
+  "crates/plugin-manager",
+  "crates/ink-engine",
+  "crates/pdfium-engine",
+  "crates/storage-sqlite",
+  "crates/sync-webdav",
+  "crates/stylus-drivers",
+  "crates/ext-loader",
+  "crates/nbk-migrate",
+  "app/rust",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+# Matches the pinned toolchain rather than a hand-checked MSRV: several resolved dependencies
+# require edition2024. Lower it only after verifying with `cargo +<older> check`.
+rust-version = "1.99"
+
+[workspace.dependencies]
+cordis-rs = { path = "crates/cordis-rs" }
+inkweave-api = { path = "crates/inkweave-api" }
+plugin-manager = { path = "crates/plugin-manager" }
+ink-engine = { path = "crates/ink-engine" }
+pdfium-engine = { path = "crates/pdfium-engine" }
+storage-sqlite = { path = "crates/storage-sqlite" }
+sync-webdav = { path = "crates/sync-webdav" }
+stylus-drivers = { path = "crates/stylus-drivers" }
+ext-loader = { path = "crates/ext-loader" }
+nbk-migrate = { path = "crates/nbk-migrate" }
+
+arc-swap = "1.7"
+async-trait = "0.1"
+futures = "0.3"
+parking_lot = "0.12"
+thiserror = "1.0"
+tracing = "0.1"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+# Handwriting is latency-critical: keep debug builds of the hot path optimised so that
+# profiling an `--profile` build reflects reality (DEV guide §3.1).
+[profile.dev.package."*"]
+opt-level = 2

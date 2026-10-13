@@ -1,0 +1,13 @@
+[package]
+name = "nbk-migrate"
+description = "Format version migration chain for the .nbk container."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+# none
