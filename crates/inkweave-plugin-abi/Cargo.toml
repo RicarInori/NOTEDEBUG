@@ -1,0 +1,11 @@
+[package]
+name = "inkweave-plugin-abi"
+description = "The C ABI shared by the host and every native plugin. No Rust types cross this boundary."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# Deliberately dependency-free: anything this crate pulls in is pulled into every plugin that
+# vendors it, and a C ABI header has no business carrying a dependency graph.
+[dependencies]

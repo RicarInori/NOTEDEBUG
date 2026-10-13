@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/cordis-rs",
   "crates/inkweave-api",
+  "crates/inkweave-plugin-abi",
   "crates/plugin-manager",
   "crates/ink-engine",
   "crates/pdfium-engine",
@@ -12,6 +13,7 @@ members = [
   "crates/ext-loader",
   "crates/nbk-migrate",
   "app/rust",
+  "extensions/example-native",
 ]
 
 [workspace.package]
@@ -25,6 +27,7 @@ rust-version = "1.99"
 [workspace.dependencies]
 cordis-rs = { path = "crates/cordis-rs" }
 inkweave-api = { path = "crates/inkweave-api" }
+inkweave-plugin-abi = { path = "crates/inkweave-plugin-abi" }
 plugin-manager = { path = "crates/plugin-manager" }
 ink-engine = { path = "crates/ink-engine" }
 pdfium-engine = { path = "crates/pdfium-engine" }
@@ -41,6 +44,7 @@ parking_lot = "0.12"
 thiserror = "1.0"
 tracing = "0.1"
 toml = "0.8"
+libloading = "0.8"
 serde = { version = "1", features = ["derive"] }
 
 [profile.release]

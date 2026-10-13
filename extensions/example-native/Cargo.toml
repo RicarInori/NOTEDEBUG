@@ -1,0 +1,15 @@
+[package]
+name = "example-native"
+description = "A native plugin exercising the inkweave C ABI. Built as a cdylib the host loads at runtime."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The shared ABI. The plugin deliberately depends on *nothing else* of the project: it never links a
+# host crate, and reaches the host only through the function-pointer table it is handed.
+inkweave-plugin-abi.workspace = true
