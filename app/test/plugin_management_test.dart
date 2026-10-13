@@ -81,7 +81,9 @@ void main() {
 
       // ...and the header reflects the refreshed snapshot. The card itself has moved into the
       // "已停用" section, which a ListView does not build while it sits offscreen.
-      expect(find.textContaining('启用 7 个'), findsOneWidget);
+      // 7 of 8 are enabled to begin with — ink-engine ships disabled, since note-taking is a plugin
+      // the user turns on.
+      expect(find.textContaining('启用 6 个'), findsOneWidget);
     });
 
     testWidgets('a declared contribution opens the screen the registry maps it to', (tester) async {
@@ -122,7 +124,7 @@ void main() {
       ));
       await settle(tester);
 
-      expect(find.textContaining('启用 7 个'), findsOneWidget);
+      expect(find.textContaining('启用 6 个'), findsOneWidget);
     });
 
     testWidgets('uninstall is offered only for WASM extensions', (tester) async {

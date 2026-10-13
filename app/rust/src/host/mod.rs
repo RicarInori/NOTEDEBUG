@@ -115,11 +115,13 @@ pub fn bootstrap(data_dir: &Path) -> Result<(), String> {
 }
 
 /// Preset plugins, in mount order. Every one of these is toggleable from the control panel.
-pub const DEFAULT_ENABLED: [&str; 8] = [
+///
+/// `ink-engine` is deliberately **absent**: note-taking is a plugin the user turns on, so the host
+/// must not enable it for them. Everything listed here is plumbing the app needs to be usable at all.
+pub const DEFAULT_ENABLED: [&str; 7] = [
     "plugin-manager",
     "stylus-generic",
     "sync-webdav",
-    "ink-engine",
     "pdfium-engine",
     "storage-sqlite",
     "nbk-migrate",
@@ -172,14 +174,19 @@ fn register_preset_plugins(registry: &Arc<PluginManager>) {
         },
     );
 
+    // Note-taking is a plugin, not host code, so it is registered like any other and left
+    // **disabled** (absent from DEFAULT_ENABLED): a fresh install has no note capability until the
+    // user enables it in the control panel.
+    let (ink_engine_handle, ink_plugin) = ink_engine::shared();
+    let _ = &ink_engine_handle;
     registry.register_internal(
         internal_info(
             "ink-engine",
             "手写引擎",
-            "笔画管线、工具与画布渲染（M1）",
+            "笔画管线、One Euro 平滑、等距重采样与撤销栈（M1）",
             Permissions::NONE,
         ),
-        ink_engine::plugin,
+        move || ink_plugin.clone(),
     );
     registry.register_internal(
         internal_info(

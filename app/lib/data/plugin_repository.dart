@@ -75,8 +75,10 @@ class DemoPluginRepository implements PluginRepository {
                 title: 'WebDAV 同步',
                 kind: ContributionKindDto.settingsView),
           ]),
-      _card('ink-engine', '手写引擎', PluginKindDto.internal, PluginStateDto.active,
-          description: '笔画管线、工具与画布渲染（M1）', budgetMb: 96),
+      // Deliberately not active: note-taking is a plugin the user turns on. Kept in step with
+      // `DEFAULT_ENABLED` in app/rust/src/host/mod.rs.
+      _card('ink-engine', '手写引擎', PluginKindDto.internal, PluginStateDto.installed,
+          description: '笔画管线、One Euro 平滑、等距重采样与撤销栈（M1）', budgetMb: 96),
       _card('pdfium-engine', 'PDF 底座', PluginKindDto.internal, PluginStateDto.active,
           description: '句柄池、tile 渲染、批注与导出（M3）', budgetMb: 128),
       _card('storage-sqlite', '文档存储', PluginKindDto.internal, PluginStateDto.active,
