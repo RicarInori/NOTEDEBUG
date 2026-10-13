@@ -5,6 +5,7 @@ import '../../bridge/api.dart';
 import '../../data/plugin_extensions.dart';
 import '../../data/plugin_repository.dart';
 import 'add_plugin_dialog.dart';
+import 'contribution_registry.dart';
 import 'plugin_card_view.dart';
 
 /// The unified control panel (§8.3) — the single place plugins are managed.
@@ -139,6 +140,17 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
     }
   }
 
+  /// Open a contribution the plugin declared. The screen comes from the Dart-side registry — a
+/// contribution with no registered screen is reported plainly rather than failing silently.
+  Future<void> _openContribution(PluginCardDto card, ContributionDto contribution) async {
+    final builder = ContributionRegistry.standard.lookup(contribution.id);
+    if (builder == null) {
+      _notify('「${contribution.title}」由 ${card.name} 声明，但尚未提供可用的界面');
+      return;
+    }
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: builder));
+  }
+
   void _notify(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -187,6 +199,8 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
                         onToggle: (enabled) => _toggle(card, enabled),
                         onUninstall: () => _uninstall(card),
                         onShowLog: () => _showLog(card),
+                        onOpenContribution: (contribution) =>
+                            _openContribution(card, contribution),
                       ),
                       const SizedBox(height: 12),
                     ],

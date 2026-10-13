@@ -71,6 +71,9 @@ instead.
 | Flutter app — Material 3 control panel, add-plugin entry, settings, library | Implemented, driven by the Rust host |
 | `flutter_rust_bridge` lifecycle bridge | **Wired** — codegen 2.13.0, `FrbPluginRepository` calls the host, no demo fallback in the app |
 | Rust host inside the APK | **Yes** — `cargo ndk` cross-compiles `libinkweave_bridge.so` for `arm64-v8a` and `x86_64`; the Gradle `buildRustHost` task runs before `preBuild` |
+| Plugin enable state | **Persisted** — `HostStateStore` writes `disabled-plugins.txt` under the app support directory and `bootstrap` honours it. Verified on the emulator: disable → force-stop → cold launch still shows the plugin disabled, and deleting the file restores the defaults |
+| Contribution entry points | **Wired** — `ContributionRegistry` maps a declared contribution id to a Flutter screen, since rendering is Flutter's job (ADR-001). A contribution with no registered screen is reported plainly instead of showing a dead button |
+| Third-party contribution UI | **Open question** — the contract declares `{id, title, kind}` and nothing more. §8.3 wants the host to render all management UI, which needs a declarative UI schema in the contract; until then only first-party plugins can contribute a screen |
 | Spike-0 latency proof (ADR-002 gate) | **Not started — the gate before M1** |
 
 ## Layout

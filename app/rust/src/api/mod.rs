@@ -204,7 +204,11 @@ pub fn plugin_cards() -> Result<Vec<PluginCardDto>, String> {
 }
 
 /// Enable or disable a plugin. This is the "hot load / shutdown" verb pair of ADR-007.
+///
+/// A successful change is remembered on disk, so the choice survives a restart — `bootstrap` reads
+/// the same file and leaves disabled presets alone.
 pub fn set_plugin_enabled(id: String, enabled: bool) -> Result<(), String> {
+    let remembered = id.clone();
     host::block_on(async move {
         let registry = &host::app().registry;
         let result = if enabled {
@@ -212,6 +216,9 @@ pub fn set_plugin_enabled(id: String, enabled: bool) -> Result<(), String> {
         } else {
             registry.disable(&id).await
         };
+        if result.is_ok() {
+            host::app().state.set_disabled(&remembered, !enabled);
+        }
         result.map_err(|error| error.to_string())
     })
 }
@@ -305,7 +312,11 @@ mod tests {
 
     fn boot() -> std::sync::MutexGuard<'static, ()> {
         let guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
-        bootstrap_host(std::env::temp_dir().to_string_lossy().to_string()).expect("host boots");
+        // A fresh directory per test-binary run: the host now persists disabled plugins, so a
+        // shared temp dir would let one run's state leak into the next and fail unrelated tests.
+        let data_dir =
+            std::env::temp_dir().join(format!("inkweave-bridge-tests-{}", std::process::id()));
+        bootstrap_host(data_dir.to_string_lossy().to_string()).expect("host boots");
         guard
     }
 
@@ -332,7 +343,11 @@ mod tests {
         // asserts rather than assuming a particular test order.
         for id in ["stylus-generic", "sync-webdav"] {
             set_plugin_enabled(id.to_string(), true).expect("enable preset");
-            assert_eq!(find(id).state, PluginStateDto::Active, "{id} must be active");
+            assert_eq!(
+                find(id).state,
+                PluginStateDto::Active,
+                "{id} must be active"
+            );
         }
     }
 
@@ -341,14 +356,20 @@ mod tests {
         let _guard = boot();
         let stylus = find("stylus-generic");
         assert_eq!(stylus.kind, PluginKindDto::Internal);
-        assert!(stylus.memory_budget_mb > 0, "the budget is shown on the card");
+        assert!(
+            stylus.memory_budget_mb > 0,
+            "the budget is shown on the card"
+        );
         assert!(
             !stylus.contributions.is_empty(),
             "the card offers a way into the plugin's own view"
         );
 
         let sync = find("sync-webdav");
-        assert!(sync.permissions.network, "a declared permission must survive the bridge");
+        assert!(
+            sync.permissions.network,
+            "a declared permission must survive the bridge"
+        );
     }
 
     #[test]
@@ -366,14 +387,35 @@ mod tests {
     fn internal_modules_cannot_be_uninstalled() {
         let _guard = boot();
         let error = uninstall_extension("ink-engine".to_string()).expect_err("must refuse");
-        assert!(error.contains("internal module"), "unexpected error: {error}");
+        assert!(
+            error.contains("internal module"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn disabling_a_plugin_is_remembered_for_the_next_launch() {
+        let _guard = boot();
+
+        set_plugin_enabled("sync-webdav".to_string(), false).expect("disable");
+        assert!(
+            host::app().state.disabled_plugins().contains("sync-webdav"),
+            "the choice must be persisted, or bootstrap would re-enable it next launch"
+        );
+
+        // Enabling again must clear it, otherwise the file would accumulate stale entries.
+        set_plugin_enabled("sync-webdav".to_string(), true).expect("enable");
+        assert!(!host::app().state.disabled_plugins().contains("sync-webdav"));
     }
 
     #[test]
     fn enabling_an_unknown_plugin_errors_instead_of_panicking() {
         let _guard = boot();
         let error = set_plugin_enabled("does.not.exist".to_string(), true).expect_err("must fail");
-        assert!(error.contains("unknown plugin"), "unexpected error: {error}");
+        assert!(
+            error.contains("unknown plugin"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -383,7 +425,9 @@ mod tests {
 
         let tasks = scheduler_tasks().expect("scheduler snapshot");
         assert!(
-            tasks.iter().any(|task| task.task == "sync" && task.requires_unmetered),
+            tasks
+                .iter()
+                .any(|task| task.task == "sync" && task.requires_unmetered),
             "a Wi-Fi-only periodic sync must be registered: {tasks:?}"
         );
 

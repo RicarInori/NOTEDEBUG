@@ -6,9 +6,11 @@
 
 mod memory;
 mod scheduler;
+mod state;
 
 pub use memory::HostMemoryGovernor;
 pub use scheduler::HostBackgroundScheduler;
+pub use state::HostStateStore;
 
 use cordis_rs::{Context, Plugin};
 use inkweave_api::registry::{Contribution, Permissions, PluginInfo, PluginKind};
@@ -31,6 +33,8 @@ pub struct AppHandle {
     /// plugins consume; these are for the host's own API surface.
     pub scheduler: Arc<HostBackgroundScheduler>,
     pub memory: Arc<HostMemoryGovernor>,
+    /// What the host remembers across restarts (currently: which presets the user turned off).
+    pub state: Arc<HostStateStore>,
     pub runtime: Runtime,
 }
 
@@ -49,9 +53,9 @@ pub fn block_on<F: Future>(future: F) -> F::Output {
 
 /// Build the kernel, register every preset plugin and enable the defaults.
 ///
-/// `_data_dir` will hold `extensions/` and the document store once those crates land; it is
-/// accepted now so the signature does not change under the Flutter layer later.
-pub fn bootstrap(_data_dir: &Path) -> Result<(), String> {
+/// `data_dir` is the application support directory: the host owns its subdirectories from here
+/// (today the disabled-plugin state; later the extension packages and the document store).
+pub fn bootstrap(data_dir: &Path) -> Result<(), String> {
     if APP.get().is_some() {
         return Ok(());
     }
@@ -66,6 +70,7 @@ pub fn bootstrap(_data_dir: &Path) -> Result<(), String> {
     let registry = PluginManager::new(root.clone());
     let scheduler = Arc::new(HostBackgroundScheduler::new());
     let memory = Arc::new(HostMemoryGovernor::new());
+    let state = Arc::new(HostStateStore::new(data_dir));
 
     runtime.block_on(async {
         // Host-owned services. Whatever a plugin needs to *request* background work or report
@@ -82,14 +87,21 @@ pub fn bootstrap(_data_dir: &Path) -> Result<(), String> {
         registry,
         scheduler,
         memory,
+        state,
         runtime,
     };
     APP.set(handle)
         .map_err(|_| "host was initialised concurrently")?;
 
-    // Mount the presets. `plugin-manager` first so the registry service exists for the rest.
+    // Mount the presets. `plugin-manager` first so the registry service exists for the rest, and
+    // skip whatever the user turned off on a previous run — that is what makes the control panel's
+    // switches survive a restart.
+    let disabled = app().state.disabled_plugins();
     block_on(async {
         for id in DEFAULT_ENABLED {
+            if disabled.contains(id) {
+                continue;
+            }
             if let Err(error) = app().registry.enable(id).await {
                 // A failed preset must not take the host down; the control panel shows it as Failed.
                 app()

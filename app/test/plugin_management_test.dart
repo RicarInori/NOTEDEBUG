@@ -26,6 +26,12 @@ Future<void> settle(WidgetTester tester, {int frames = 6}) async {
 }
 
 Future<void> pumpPanel(WidgetTester tester, PluginRepository repository) async {
+  // A phone-sized viewport only builds the first card or two, so an assertion about "any card"
+  // would silently be about whichever ones a ListView happened to build. Widen it.
+  tester.view.physicalSize = const Size(1200, 3200);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
   await tester.pumpWidget(MaterialApp(home: ControlPanelScreen(repository: repository)));
   await settle(tester);
 }
@@ -66,6 +72,29 @@ void main() {
       // ...and the header reflects the refreshed snapshot. The card itself has moved into the
       // "已停用" section, which a ListView does not build while it sits offscreen.
       expect(find.textContaining('启用 7 个'), findsOneWidget);
+    });
+
+    testWidgets('a declared contribution opens the screen the registry maps it to', (tester) async {
+      final repository = DemoPluginRepository();
+      await pumpPanel(tester, repository);
+
+      // The stylus plugin declares `stylus.canvas`, which the host maps to the canvas screen.
+      await tester.tap(find.text('打开「手写板」'));
+      await settle(tester);
+
+      expect(find.text('画布待接入'), findsOneWidget);
+    });
+
+    testWidgets('a contribution with no Dart screen says so instead of doing nothing',
+        (tester) async {
+      final repository = DemoPluginRepository();
+      await pumpPanel(tester, repository);
+
+      // `panel.plugins` is declared by the plugin-manager card; nothing registers a screen for it.
+      await tester.tap(find.text('打开「控制面板」'));
+      await settle(tester);
+
+      expect(find.textContaining('尚未提供可用的界面'), findsOneWidget);
     });
 
     testWidgets('uninstall is offered only for WASM extensions', (tester) async {
