@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../../bridge/api.dart';
 import '../../data/plugin_repository.dart';
+import '../debug/latency_probe.dart';
 
 /// Settings, including the read-outs that make the background and memory design observable
 /// (§8.5, §8.6). Plugin configuration itself lives in each plugin's contributed view, reachable
@@ -96,6 +98,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(height: 1),
             ],
           ),
+          if (kDebugMode)
+            _Section(
+              title: '诊断（仅调试构建）',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.speed_outlined),
+                  title: const Text('手写延迟探针'),
+                  subtitle: const Text('测帧内管线成本（vsync→栅格完成）；输入延迟须走 Perfetto，见 ADR-002 补充'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const LatencyProbeScreen()),
+                  ),
+                ),
+                const Divider(height: 1),
+              ],
+            ),
           const _Section(
             title: '外观',
             children: [
