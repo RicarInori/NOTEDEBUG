@@ -9,6 +9,15 @@
 //! plugin; only a plugin's own registrations belong to its effects.
 //!
 //! The inverse of a command is computed, not stored: storing both invites them to drift apart.
+//!
+//! ## Ordering caveat
+//!
+//! A command log carries no positions, so undoing a removal re-appends the stroke at the end of the
+//! page rather than at the index it came from. The relative draw order of two strokes can therefore
+//! change across an undo. That is invisible for opaque ink and visible only where strokes overlap
+//! with a translucent blend, and it is the price of a log that cannot fall out of step with the
+//! document — storing indices instead would make every *other* command responsible for maintaining
+//! them.
 
 use crate::stroke::{PageId, Stroke, StrokeId};
 use std::collections::BTreeMap;
@@ -38,6 +47,15 @@ pub enum InkCommand {
         dy: f32,
         before: Vec<Stroke>,
     },
+    /// Several commands that must undo as one step (§3.3: "撤销粒度 = 一次擦除行程内全部命中").
+    ///
+    /// Applied in order and unwound in reverse, so the sub-commands may assume their predecessors
+    /// have already run. A batch is never nested — the engine builds them flat — so `page` is
+    /// unambiguous and is recorded rather than derived.
+    Batch {
+        page: PageId,
+        commands: Vec<InkCommand>,
+    },
 }
 
 impl InkCommand {
@@ -45,7 +63,16 @@ impl InkCommand {
         match self {
             InkCommand::Add { page, .. }
             | InkCommand::Remove { page, .. }
-            | InkCommand::Translate { page, .. } => *page,
+            | InkCommand::Translate { page, .. }
+            | InkCommand::Batch { page, .. } => *page,
+        }
+    }
+
+    /// Whether this command would change anything. Used to keep no-op gestures out of the log.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            InkCommand::Batch { commands, .. } => commands.is_empty(),
+            _ => false,
         }
     }
 
@@ -64,6 +91,11 @@ impl InkCommand {
                     }
                 }
             }
+            InkCommand::Batch { commands, .. } => {
+                for command in commands {
+                    command.apply(pages);
+                }
+            }
         }
     }
 
@@ -77,6 +109,11 @@ impl InkCommand {
                 // Restoring the recorded geometry is exact; the offsets could not be.
                 for stroke in before {
                     pages.replace(*page, stroke.clone());
+                }
+            }
+            InkCommand::Batch { commands, .. } => {
+                for command in commands.iter().rev() {
+                    command.revert(pages);
                 }
             }
         }
@@ -160,6 +197,11 @@ impl UndoStack {
     /// Committing discards the redo branch — the standard editor contract, and the only honest one:
     /// the redone future no longer exists once the user edits from here.
     pub fn commit(&mut self, pages: &mut PageStore, command: InkCommand) {
+        // An empty batch is not an edit. Letting one through would cost the user an undo press that
+        // visibly does nothing, and would push a real edit off the bounded log.
+        if command.is_empty() {
+            return;
+        }
         command.apply(pages);
         self.redone.clear();
         self.undone.push(command);
@@ -369,5 +411,97 @@ mod tests {
             first, second,
             "an undone edit must not hand out a recycled id"
         );
+    }
+
+    #[test]
+    fn a_batch_undoes_as_one_step() {
+        let (mut pages, mut stack) = setup();
+        pages.push(1, stroke(1, 10.0));
+        pages.push(1, stroke(2, 20.0));
+
+        // One eraser journey that hit two strokes: remove both, but as a single user action.
+        stack.commit(
+            &mut pages,
+            InkCommand::Batch {
+                page: 1,
+                commands: vec![
+                    InkCommand::Remove {
+                        page: 1,
+                        stroke: stroke(1, 10.0),
+                    },
+                    InkCommand::Remove {
+                        page: 1,
+                        stroke: stroke(2, 20.0),
+                    },
+                ],
+            },
+        );
+        assert_eq!(pages.count(1), 0);
+        assert_eq!(stack.undo_depth(), 1, "one journey, one undo step");
+
+        assert!(stack.undo(&mut pages));
+        assert_eq!(pages.count(1), 2, "both strokes return together");
+
+        assert!(stack.redo(&mut pages));
+        assert_eq!(pages.count(1), 0);
+    }
+
+    #[test]
+    fn a_batch_reverts_its_commands_in_reverse() {
+        let (mut pages, mut stack) = setup();
+        // Add, then translate: the translate assumes the add has already run, which is what makes the
+        // unwind order observable.
+        let original = stroke(1, 10.0);
+        stack.commit(
+            &mut pages,
+            InkCommand::Batch {
+                page: 1,
+                commands: vec![
+                    InkCommand::Add {
+                        page: 1,
+                        stroke: original.clone(),
+                    },
+                    InkCommand::Translate {
+                        page: 1,
+                        ids: vec![StrokeId(1)],
+                        dx: 5.0,
+                        dy: 0.0,
+                        before: vec![original.clone()],
+                    },
+                ],
+            },
+        );
+        assert_eq!(pages.strokes(1)[0].points[0].x, 15.0);
+
+        stack.undo(&mut pages);
+        assert_eq!(
+            pages.count(1),
+            0,
+            "the translate is unwound before the add that created its target"
+        );
+
+        stack.redo(&mut pages);
+        assert_eq!(pages.count(1), 1);
+        assert_eq!(pages.strokes(1)[0].points[0].x, 15.0);
+    }
+
+    #[test]
+    fn an_empty_batch_is_not_an_edit() {
+        let (mut pages, mut stack) = setup();
+        pages.push(1, stroke(1, 10.0));
+
+        stack.commit(
+            &mut pages,
+            InkCommand::Batch {
+                page: 1,
+                commands: Vec::new(),
+            },
+        );
+        assert_eq!(
+            stack.undo_depth(),
+            0,
+            "a gesture that hit nothing must not consume an undo press"
+        );
+        assert_eq!(pages.count(1), 1);
     }
 }
