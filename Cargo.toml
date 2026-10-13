@@ -39,6 +39,7 @@ nbk-migrate = { path = "crates/nbk-migrate" }
 
 arc-swap = "1.7"
 async-trait = "0.1"
+bytemuck = { version = "1", features = ["derive"] }
 futures = "0.3"
 parking_lot = "0.12"
 thiserror = "1.0"
@@ -46,6 +47,9 @@ tracing = "0.1"
 toml = "0.8"
 libloading = "0.8"
 serde = { version = "1", features = ["derive"] }
+# The ink renderer (§3.1). Default features cover every backend the guide targets: dx12/vulkan on
+# desktop, vulkan/gles on Android, metal on Apple.
+wgpu = "30.0"
 
 [profile.release]
 lto = "thin"

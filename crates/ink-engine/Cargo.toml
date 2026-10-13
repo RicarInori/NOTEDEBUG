@@ -11,6 +11,12 @@ cordis-rs.workspace = true
 inkweave-api.workspace = true
 async-trait.workspace = true
 parking_lot.workspace = true
+# The renderer. `bytemuck` is what lets a `#[repr(C)]` vertex go into a buffer without a copy through
+# a `Vec<u8>`; `futures` only carries the blocking adapter/device requests (see `render::block_on`).
+wgpu.workspace = true
+bytemuck.workspace = true
+futures.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }
