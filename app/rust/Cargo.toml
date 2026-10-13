@@ -29,3 +29,12 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "m
 # Must match the `flutter_rust_bridge` Dart package in pubspec.lock exactly: the generated
 # `frb_generated.rs` and the generated Dart are a matched pair.
 flutter_rust_bridge = "=2.13.0"
+
+# The canvas. Android-only on purpose: these exist to turn a Java `Surface` into a `NativeWindow`
+# wgpu can present to, which is a platform concern the engine deliberately does not know about, and
+# nothing above this line needs to be aware of it.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+# `rwh_06` is the raw-window-handle version wgpu 30 speaks; without it `NativeWindow` cannot be
+# handed to `SurfaceTargetUnsafe::from_window`.
+ndk = { version = "0.9", features = ["rwh_06"] }

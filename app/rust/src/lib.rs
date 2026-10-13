@@ -17,4 +17,13 @@ mod frb_generated;
 pub mod api;
 pub mod host;
 
+/// The Android platform view's canvas (ADR-001). Android-only because it exists to bridge a Java
+/// `Surface` and `MotionEvent` to the engine, and neither has a meaning elsewhere.
+#[cfg(target_os = "android")]
+pub mod canvas;
+
+/// Reporting failures to logcat, which Rust's `stderr` does not reach on Android.
+#[cfg(target_os = "android")]
+pub mod logcat;
+
 pub use host::{app, bootstrap, AppHandle};

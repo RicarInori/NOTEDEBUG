@@ -48,7 +48,7 @@ pub use erase::{EraserMode, EraserPath};
 pub use index::{StrokeIndex, GRID_CELL_PX};
 pub use mesh::{mesh_stroke, MeshVertex, StrokeMesh, ROUND_SEGMENTS};
 pub use pipeline::{resample_equidistant, width_for, OneEuroFilter};
-pub use render::{InkRenderer, RenderError};
+pub use render::{InkRenderer, RenderError, SurfaceRenderer};
 pub use select::SelectShape;
 pub use stroke::{PageId, Stroke, StrokeId, StrokePoint};
 pub use undo::{InkCommand, PageStore, UndoStack};

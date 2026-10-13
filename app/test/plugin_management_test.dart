@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inkweave/bridge/api.dart';
@@ -92,14 +93,25 @@ void main() {
     });
 
     testWidgets('a declared contribution opens the screen the registry maps it to', (tester) async {
-      final repository = DemoPluginRepository();
-      await pumpPanel(tester, repository);
+      // The canvas is a native surface on Android and an explanatory placeholder anywhere else, and
+      // `flutter_test` runs as Android by default. Pinning a platform with no surface is what lets
+      // this assert something real rather than the platform-view plumbing a host test cannot host.
+      // Reset in a `finally`: the framework checks its debug variables when the body returns, which
+      // is before any `addTearDown` callback would run.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        final repository = DemoPluginRepository();
+        await pumpPanel(tester, repository);
 
-      // The stylus plugin declares `stylus.canvas`, which the host maps to the canvas screen.
-      await tester.tap(find.text('打开「手写板」'));
-      await settle(tester);
+        // The stylus plugin declares `stylus.canvas`, which the host maps to the canvas screen.
+        await tester.tap(find.text('打开「手写板」'));
+        await settle(tester);
 
-      expect(find.text('画布待接入'), findsOneWidget);
+        expect(find.text('手写画布'), findsOneWidget);
+        expect(find.text('画布待接入'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
 
     testWidgets('a contribution with no Dart screen says so instead of doing nothing',
@@ -173,11 +185,11 @@ void main() {
     testWidgets('a native manifest prefills the boxes with the plugin\'s own request',
         (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
+        const MaterialApp(
           home: Scaffold(
             body: AddPluginDialog(
               packageName: 'libexample_native.so',
-              manifest: const NativeManifestDto(
+              manifest: NativeManifestDto(
                 path: '/tmp/libexample_native.so',
                 id: 'com.inkweave.example.native',
                 name: '示例原生插件',

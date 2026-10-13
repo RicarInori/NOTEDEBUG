@@ -60,6 +60,10 @@ pub fn bootstrap(data_dir: &Path) -> Result<(), String> {
         return Ok(());
     }
 
+    // Before anything can panic: a panic inside the host would otherwise be invisible on Android.
+    #[cfg(target_os = "android")]
+    crate::logcat::install_panic_hook();
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -99,16 +103,24 @@ pub fn bootstrap(data_dir: &Path) -> Result<(), String> {
     // skip whatever the user turned off on a previous run — that is what makes the control panel's
     // switches survive a restart.
     let disabled = app().state.disabled_plugins();
+    // The presets plus anything the user turned on themselves. `ink-engine` is not a preset, so
+    // without this the note capability would be off at every launch no matter what the user chose.
+    let mut to_enable: Vec<String> = DEFAULT_ENABLED.iter().map(|id| (*id).to_string()).collect();
+    for id in app().state.enabled_plugins() {
+        if !to_enable.contains(&id) {
+            to_enable.push(id);
+        }
+    }
     block_on(async {
-        for id in DEFAULT_ENABLED {
-            if disabled.contains(id) {
+        for id in to_enable {
+            if disabled.contains(&id) {
                 continue;
             }
-            if let Err(error) = app().registry.enable(id).await {
-                // A failed preset must not take the host down; the control panel shows it as Failed.
+            if let Err(error) = app().registry.enable(&id).await {
+                // A failed plugin must not take the host down; the control panel shows it as Failed.
                 app()
                     .registry
-                    .record_log(id, format!("启动时启用失败: {error}"));
+                    .record_log(&id, format!("启动时启用失败: {error}"));
             }
         }
     });

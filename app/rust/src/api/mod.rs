@@ -264,7 +264,9 @@ pub fn set_plugin_enabled(id: String, enabled: bool) -> Result<(), String> {
             registry.disable(&id).await
         };
         if result.is_ok() {
-            host::app().state.set_disabled(&remembered, !enabled);
+            // Both directions are recorded: a plugin the user turned on has to still be on next
+            // launch, and one they turned off has to stay off.
+            host::app().state.set_remembered(&remembered, enabled);
         }
         result.map_err(|error| error.to_string())
     })
@@ -321,12 +323,14 @@ pub fn install_extension(
 /// Uninstall an imported extension (WASM or native). Internal modules return an error, shown
 /// verbatim by the UI.
 pub fn uninstall_extension(id: String) -> Result<(), String> {
+    let forgotten = id.clone();
     host::block_on(async move {
-        host::app()
-            .registry
-            .uninstall(&id)
-            .await
-            .map_err(|error| error.to_string())
+        let result = host::app().registry.uninstall(&id).await;
+        if result.is_ok() {
+            // Otherwise a stale id would have bootstrap trying to enable something that is gone.
+            host::app().state.forget(&forgotten);
+        }
+        result.map_err(|error| error.to_string())
     })
 }
 
