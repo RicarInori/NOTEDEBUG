@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../data/models.dart';
+import '../../bridge/api.dart';
 
 /// Permission confirmation for an extension install (§8.4).
 ///
@@ -74,7 +74,7 @@ class _AddPluginDialogState extends State<AddPluginDialog> {
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(
-            Permissions(
+            PermissionsDto(
               network: _network,
               filesystem: _filesystem,
               clipboard: _clipboard,

@@ -7,13 +7,12 @@
 //!
 //! # Generated bridge code
 //!
-//! `flutter_rust_bridge_codegen generate` writes `src/frb_generated.rs` and the Dart bindings.
-//! Add the include below **after** running codegen; it is omitted here so that `cargo test` works
-//! on a fresh checkout:
-//!
-//! ```ignore
-//! mod frb_generated;
-//! ```
+//! `crates/frb_generated.rs` and `app/lib/bridge/*.dart` are produced by `flutter_rust_bridge_codegen
+//! generate` (2.13.0, matching the `flutter_rust_bridge` dependency exactly). They are generated
+//! artifacts and are gitignored — regenerate them after any change to [`api`] rather than editing
+//! them.
+
+mod frb_generated;
 
 pub mod api;
 pub mod host;

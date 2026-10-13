@@ -25,3 +25,7 @@ async-trait.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
+
+# Must match the `flutter_rust_bridge` Dart package in pubspec.lock exactly: the generated
+# `frb_generated.rs` and the generated Dart are a matched pair.
+flutter_rust_bridge = "=2.13.0"

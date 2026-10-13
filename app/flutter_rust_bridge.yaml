@@ -2,20 +2,11 @@
 #
 #   cd app && flutter_rust_bridge_codegen generate
 #
-# `rust_input` is the API module the Dart side is generated from; everything reachable from
-# `crate::api` is scanned. Types defined in other crates are listed under `mirror` so they are
-# generated instead of re-declared, which keeps one Rust definition per concept.
+# `rust_input` is the module the Dart side is generated from; everything reachable from
+# `crate::api` is scanned. The API layer owns its own wire types (see `api` for why) so no
+# external types need mirroring and this config stays minimal.
 rust_input: crate::api
 rust_root: rust/
 dart_output: lib/bridge
-
-mirror:
-  - inkweave_api::registry::PluginInfo
-  - inkweave_api::registry::PluginRuntimeState
-  - inkweave_api::registry::PluginKind
-  - inkweave_api::registry::Permissions
-  - inkweave_api::registry::Contribution
-  - inkweave_api::registry::ContributionKind
-  - inkweave_api::stylus::StylusCapabilities
 
 dart_enums_style: true

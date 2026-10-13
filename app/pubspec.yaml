@@ -20,6 +20,10 @@ dependencies:
   # fails AGP's AAR metadata check against flutter_plugin_android_lifecycle (>= 36).
   file_picker: ^13.1.0
 
+  # The host needs a writable app directory for its plugin registry, log buffers and (later)
+  # extension storage. `getApplicationSupportDirectory()` is the platform-correct answer.
+  path_provider: ^2.1.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

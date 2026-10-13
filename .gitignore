@@ -18,10 +18,11 @@ app/android/.gradle/
 app/android/local.properties
 app/android/app/src/main/jniLibs/
 
-# flutter_rust_bridge generated code (regenerate with flutter_rust_bridge_codegen generate)
-app/lib/bridge/frb_generated.dart
-app/lib/bridge/frb_generated.io.dart
-app/rust/src/frb_generated.rs
+# flutter_rust_bridge generated code IS committed on purpose: the bridge types are the Dart side of
+# the contract the UI consumes, so a fresh clone must be able to `flutter analyze` / `flutter test`
+# / `cargo build` without first installing the codegen tool. Regenerate with
+#   cd app && flutter_rust_bridge_codegen generate
+# after any change to `crate::api`; the frb version is pinned exactly, so output is deterministic.
 
 # WASM extension build output
 extensions/**/target/

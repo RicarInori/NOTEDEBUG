@@ -1,7 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../data/models.dart';
+import '../../bridge/api.dart';
+import '../../data/plugin_extensions.dart';
 import '../../data/plugin_repository.dart';
 import 'add_plugin_dialog.dart';
 import 'plugin_card_view.dart';
@@ -21,9 +22,10 @@ class ControlPanelScreen extends StatefulWidget {
 }
 
 class _ControlPanelScreenState extends State<ControlPanelScreen> {
-  List<PluginCard> _cards = const [];
+  List<PluginCardDto> _cards = const [];
   List<TaskSummary> _tasks = const [];
-  MemorySummary _memory = const MemorySummary();
+  MemorySummary _memory =
+      const MemorySummary(processUsedMb: 0, pressure: 'none', overBudget: []);
   bool _loading = true;
 
   @override
@@ -46,13 +48,13 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
     });
   }
 
-  Future<void> _toggle(PluginCard card, bool enabled) async {
+  Future<void> _toggle(PluginCardDto card, bool enabled) async {
     await widget.repository.setEnabled(card.id, enabled);
     await _refresh();
     _notify('${card.name} 已${enabled ? '启用' : '停用'}');
   }
 
-  Future<void> _uninstall(PluginCard card) async {
+  Future<void> _uninstall(PluginCardDto card) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -80,7 +82,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
     }
   }
 
-  Future<void> _showLog(PluginCard card) async {
+  Future<void> _showLog(PluginCardDto card) async {
     final lines = await widget.repository.log(card.id);
     if (!mounted) return;
     await showDialog<void>(
@@ -122,7 +124,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
       return;
     }
 
-    final accepted = await showDialog<Permissions>(
+    final accepted = await showDialog<PermissionsDto>(
       context: context,
       builder: (context) => AddPluginDialog(packageName: file.name),
     );
@@ -197,10 +199,10 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
 
   List<_Section> _sections() {
     final activeInternal = _cards
-        .where((card) => card.kind == PluginKind.internal && card.state.isActive)
+        .where((card) => card.kind == PluginKindDto.internal && card.state.isActive)
         .toList();
     final activeExtensions = _cards
-        .where((card) => card.kind == PluginKind.wasm && card.state.isActive)
+        .where((card) => card.kind == PluginKindDto.wasm && card.state.isActive)
         .toList();
     final inactive = _cards.where((card) => !card.state.isActive).toList();
 
@@ -216,7 +218,7 @@ class _Section {
   const _Section(this.title, this.cards);
 
   final String title;
-  final List<PluginCard> cards;
+  final List<PluginCardDto> cards;
 }
 
 class _MemoryHeader extends StatelessWidget {

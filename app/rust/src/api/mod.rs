@@ -4,13 +4,184 @@
 //! [`PluginRegistry`](inkweave_api::PluginRegistry) that the in-app control panel renders. There is
 //! exactly one management path, which is what makes the panel "unified" in practice and not just
 //! in the mockup.
+//!
+//! # Why this module owns its own wire types
+//!
+//! The kernel and the API contract live in other crates, and frb's only way to use a foreign type
+//! is the `#[frb(mirror(...))]` attribute, which requires re-listing every field — duplication in a
+//! different notation. So the bridge declares explicit DTOs here and converts. That also decouples
+//! the wire format from internal types: reshaping `PluginInfo` cannot silently change the Dart API.
 
 use crate::host;
-use inkweave_api::registry::{InstallRequest, Permissions, PluginInfo};
+use inkweave_api::registry::InstallRequest;
 use inkweave_api::runtime::{BackgroundScheduler, MemPressure, MemoryGovernor};
 // The registry verbs live on the trait; the concrete `PluginManager` alone does not expose them.
 use inkweave_api::PluginRegistry;
 use std::path::Path;
+
+// --- wire types -------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PluginKindDto {
+    Internal,
+    Wasm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PluginStateDto {
+    Installed,
+    Pending,
+    Loading,
+    Active,
+    Failed,
+    Unloading,
+    Disposed,
+}
+
+#[derive(Clone, Debug)]
+pub struct PermissionsDto {
+    pub network: bool,
+    pub filesystem: bool,
+    pub clipboard: bool,
+}
+
+impl From<inkweave_api::registry::Permissions> for PermissionsDto {
+    fn from(value: inkweave_api::registry::Permissions) -> Self {
+        Self {
+            network: value.network,
+            filesystem: value.filesystem,
+            clipboard: value.clipboard,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StylusCapabilitiesDto {
+    pub pressure: bool,
+    pub tilt: bool,
+    pub hover: bool,
+    pub eraser: bool,
+    pub predict_stroke: bool,
+    pub recognize_shape: bool,
+    pub recognize_handwriting: bool,
+}
+
+impl From<inkweave_api::stylus::StylusCapabilities> for StylusCapabilitiesDto {
+    fn from(value: inkweave_api::stylus::StylusCapabilities) -> Self {
+        Self {
+            pressure: value.pressure,
+            tilt: value.tilt,
+            hover: value.hover,
+            eraser: value.eraser,
+            predict_stroke: value.predict_stroke,
+            recognize_shape: value.recognize_shape,
+            recognize_handwriting: value.recognize_handwriting,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContributionKindDto {
+    Command,
+    SettingsView,
+    MenuItem,
+    Brush,
+    Template,
+}
+
+#[derive(Clone, Debug)]
+pub struct ContributionDto {
+    pub id: String,
+    pub title: String,
+    pub kind: ContributionKindDto,
+}
+
+/// One plugin, exactly as the control panel needs it.
+#[derive(Clone, Debug)]
+pub struct PluginCardDto {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub kind: PluginKindDto,
+    pub state: PluginStateDto,
+    pub author: String,
+    pub description: String,
+    pub permissions: PermissionsDto,
+    pub capabilities: StylusCapabilitiesDto,
+    pub memory_budget_mb: u32,
+    pub memory_used_mb: u32,
+    pub background_tasks: u32,
+    pub contributions: Vec<ContributionDto>,
+    pub last_error: Option<String>,
+}
+
+impl From<inkweave_api::registry::PluginInfo> for PluginCardDto {
+    fn from(value: inkweave_api::registry::PluginInfo) -> Self {
+        use inkweave_api::registry::{ContributionKind, PluginKind, PluginRuntimeState};
+
+        Self {
+            id: value.id,
+            name: value.name,
+            version: value.version,
+            kind: match value.kind {
+                PluginKind::Internal => PluginKindDto::Internal,
+                PluginKind::Wasm => PluginKindDto::Wasm,
+            },
+            state: match value.state {
+                PluginRuntimeState::Installed => PluginStateDto::Installed,
+                PluginRuntimeState::Pending => PluginStateDto::Pending,
+                PluginRuntimeState::Loading => PluginStateDto::Loading,
+                PluginRuntimeState::Active => PluginStateDto::Active,
+                PluginRuntimeState::Failed => PluginStateDto::Failed,
+                PluginRuntimeState::Unloading => PluginStateDto::Unloading,
+                PluginRuntimeState::Disposed => PluginStateDto::Disposed,
+            },
+            author: value.author,
+            description: value.description,
+            permissions: value.permissions.into(),
+            capabilities: value.capabilities.into(),
+            memory_budget_mb: value.memory_budget_mb,
+            memory_used_mb: value.memory_used_mb,
+            background_tasks: value.background_tasks,
+            contributions: value
+                .contributions
+                .into_iter()
+                .map(|contribution| ContributionDto {
+                    id: contribution.id,
+                    title: contribution.title,
+                    kind: match contribution.kind {
+                        ContributionKind::Command => ContributionKindDto::Command,
+                        ContributionKind::SettingsView => ContributionKindDto::SettingsView,
+                        ContributionKind::MenuItem => ContributionKindDto::MenuItem,
+                        ContributionKind::Brush => ContributionKindDto::Brush,
+                        ContributionKind::Template => ContributionKindDto::Template,
+                    },
+                })
+                .collect(),
+            last_error: value.last_error,
+        }
+    }
+}
+
+/// Memory read-out for the panel header (§8.6).
+#[derive(Clone, Debug)]
+pub struct MemorySummary {
+    pub process_used_mb: u32,
+    pub pressure: String,
+    pub over_budget: Vec<String>,
+}
+
+/// One scheduled background task, for the panel's diagnostics (§8.5).
+#[derive(Clone, Debug)]
+pub struct TaskSummary {
+    pub owner: String,
+    pub task: String,
+    pub periodic: bool,
+    pub interval_minutes: u32,
+    pub requires_unmetered: bool,
+}
+
+// --- API --------------------------------------------------------------------
 
 /// Initialise the host. Must be called before any other function; idempotent.
 pub fn bootstrap_host(data_dir: String) -> Result<(), String> {
@@ -23,8 +194,13 @@ pub fn api_version() -> String {
 }
 
 /// Everything the control panel renders, in one lock-free read (ADR-004).
-pub fn plugin_cards() -> Result<Vec<PluginInfo>, String> {
-    Ok(host::app().registry.snapshot())
+pub fn plugin_cards() -> Result<Vec<PluginCardDto>, String> {
+    Ok(host::app()
+        .registry
+        .snapshot()
+        .into_iter()
+        .map(PluginCardDto::from)
+        .collect())
 }
 
 /// Enable or disable a plugin. This is the "hot load / shutdown" verb pair of ADR-007.
@@ -46,19 +222,20 @@ pub fn install_extension(
     network: bool,
     filesystem: bool,
     clipboard: bool,
-) -> Result<PluginInfo, String> {
+) -> Result<PluginCardDto, String> {
     host::block_on(async move {
         host::app()
             .registry
             .install(InstallRequest {
                 package_path,
-                accepted: Permissions {
+                accepted: inkweave_api::registry::Permissions {
                     network,
                     filesystem,
                     clipboard,
                 },
             })
             .await
+            .map(PluginCardDto::from)
             .map_err(|error| error.to_string())
     })
 }
@@ -79,14 +256,6 @@ pub fn plugin_log(id: String, lines: u32) -> Result<Vec<String>, String> {
     Ok(host::app().registry.log_tail(&id, lines as usize))
 }
 
-/// Memory read-out for the panel header (§8.6).
-#[derive(Clone, Debug)]
-pub struct MemorySummary {
-    pub process_used_mb: u32,
-    pub pressure: String,
-    pub over_budget: Vec<String>,
-}
-
 pub fn memory_summary() -> Result<MemorySummary, String> {
     let memory = &host::app().memory;
     let pressure = match memory.pressure() {
@@ -100,16 +269,6 @@ pub fn memory_summary() -> Result<MemorySummary, String> {
         pressure: pressure.to_string(),
         over_budget: memory.over_budget(),
     })
-}
-
-/// One scheduled background task, for the panel's diagnostics.
-#[derive(Clone, Debug)]
-pub struct TaskSummary {
-    pub owner: String,
-    pub task: String,
-    pub periodic: bool,
-    pub interval_minutes: u32,
-    pub requires_unmetered: bool,
 }
 
 /// Background work currently registered with the host scheduler (§8.5).
@@ -139,7 +298,6 @@ pub fn unfinished_tasks(owner: String) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use inkweave_api::PluginRuntimeState;
     use std::sync::Mutex;
 
     /// The host is process-global, so these tests must not race each other.
@@ -151,7 +309,7 @@ mod tests {
         guard
     }
 
-    fn find(id: &str) -> PluginInfo {
+    fn find(id: &str) -> PluginCardDto {
         plugin_cards()
             .expect("snapshot")
             .into_iter()
@@ -174,12 +332,23 @@ mod tests {
         // asserts rather than assuming a particular test order.
         for id in ["stylus-generic", "sync-webdav"] {
             set_plugin_enabled(id.to_string(), true).expect("enable preset");
-            assert_eq!(
-                find(id).state,
-                PluginRuntimeState::Active,
-                "{id} must be active"
-            );
+            assert_eq!(find(id).state, PluginStateDto::Active, "{id} must be active");
         }
+    }
+
+    #[test]
+    fn the_wire_types_carry_what_the_panel_renders() {
+        let _guard = boot();
+        let stylus = find("stylus-generic");
+        assert_eq!(stylus.kind, PluginKindDto::Internal);
+        assert!(stylus.memory_budget_mb > 0, "the budget is shown on the card");
+        assert!(
+            !stylus.contributions.is_empty(),
+            "the card offers a way into the plugin's own view"
+        );
+
+        let sync = find("sync-webdav");
+        assert!(sync.permissions.network, "a declared permission must survive the bridge");
     }
 
     #[test]
@@ -187,30 +356,24 @@ mod tests {
         let _guard = boot();
 
         set_plugin_enabled("sync-webdav".to_string(), false).expect("disable");
-        assert_eq!(find("sync-webdav").state, PluginRuntimeState::Installed);
+        assert_eq!(find("sync-webdav").state, PluginStateDto::Installed);
 
         set_plugin_enabled("sync-webdav".to_string(), true).expect("enable");
-        assert_eq!(find("sync-webdav").state, PluginRuntimeState::Active);
+        assert_eq!(find("sync-webdav").state, PluginStateDto::Active);
     }
 
     #[test]
     fn internal_modules_cannot_be_uninstalled() {
         let _guard = boot();
         let error = uninstall_extension("ink-engine".to_string()).expect_err("must refuse");
-        assert!(
-            error.contains("internal module"),
-            "unexpected error: {error}"
-        );
+        assert!(error.contains("internal module"), "unexpected error: {error}");
     }
 
     #[test]
     fn enabling_an_unknown_plugin_errors_instead_of_panicking() {
         let _guard = boot();
         let error = set_plugin_enabled("does.not.exist".to_string(), true).expect_err("must fail");
-        assert!(
-            error.contains("unknown plugin"),
-            "unexpected error: {error}"
-        );
+        assert!(error.contains("unknown plugin"), "unexpected error: {error}");
     }
 
     #[test]
@@ -220,9 +383,7 @@ mod tests {
 
         let tasks = scheduler_tasks().expect("scheduler snapshot");
         assert!(
-            tasks
-                .iter()
-                .any(|task| task.task == "sync" && task.requires_unmetered),
+            tasks.iter().any(|task| task.task == "sync" && task.requires_unmetered),
             "a Wi-Fi-only periodic sync must be registered: {tasks:?}"
         );
 

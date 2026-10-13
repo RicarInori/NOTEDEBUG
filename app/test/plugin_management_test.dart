@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inkweave/data/models.dart';
+import 'package:inkweave/bridge/api.dart';
+import 'package:inkweave/data/plugin_extensions.dart';
 import 'package:inkweave/data/plugin_repository.dart';
 import 'package:inkweave/modules/plugins/control_panel_screen.dart';
 import 'package:inkweave/modules/plugins/plugin_card_view.dart';
@@ -58,7 +59,7 @@ void main() {
           .firstWhere((card) => card.id == 'stylus-generic');
       expect(
         stylus.state,
-        PluginRuntimeState.installed,
+        PluginStateDto.installed,
         reason: 'the switch must drive the registry, not local widget state',
       );
 
@@ -87,9 +88,9 @@ void main() {
 
       final installed = await repository.install(
         '/tmp/example.wasm',
-        const Permissions(network: true),
+        const PermissionsDto(network: true, filesystem: false, clipboard: false),
       );
-      expect(installed.kind, PluginKind.wasm);
+      expect(installed.kind, PluginKindDto.wasm);
       expect(installed.isUninstallable, isTrue);
       expect(installed.permissions.labels, ['网络']);
       expect((await repository.cards()).length, before + 1);

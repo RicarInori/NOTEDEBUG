@@ -17,12 +17,29 @@ The authoritative specification is [`docs/inkweave-dev-guide.md`](docs/inkweave-
 Both halves build and are green on Windows:
 
 ```text
-cargo test --workspace                                  29 passed, 0 failed (1 ignored doctest)
+cargo test --workspace                                  30 passed, 0 failed
 cargo clippy --workspace --all-targets -- -D warnings    clean
 cargo fmt --all -- --check                               clean
 cd app && flutter analyze                                no issues found
-cd app && flutter test                                   5 passed
+cd app && flutter test                                   6 passed
+cd app && flutter build apk --debug                      builds, with libinkweave_bridge.so inside
 ```
+
+### The Flutter app runs the real host
+
+`flutter_rust_bridge_codegen generate` produced `app/rust/src/frb_generated.rs` and
+`app/lib/bridge/*.dart`, and those are **committed** — they are the Dart projection of the contract,
+so a fresh clone can `flutter analyze`, `flutter test` and `cargo build` without installing the
+codegen tool. Regenerate after any change to `app/rust/src/api`, with the frb version pinned exactly
+on both sides.
+
+The app has **no demo fallback**: if the native library cannot be loaded it shows a "宿主未就绪"
+screen naming the build command, rather than quietly running on fake data. `DemoPluginRepository`
+exists only for widget tests.
+
+One structural decision worth knowing: the bridge types from `bridge/api.dart` are used **directly**
+by the UI, with UI-only conveniences added as extensions (`plugin_extensions.dart`). There is no
+second model to keep in sync — that duplication is exactly what the generator removes.
 
 Five real defects surfaced during the first build, which is the point of having a build:
 
@@ -51,8 +68,9 @@ instead.
 | `sync-webdav` — six-state sync machine, LWW w/ clock-rollback guard, injectable transport | State machine implemented; **HTTP transport is M4** |
 | `nbk-migrate` — `.nbk` version migration chain | Implemented, with tests |
 | `ink-engine`, `pdfium-engine`, `storage-sqlite`, `ext-loader` | Placeholder crates (documented scope, no service provided yet) |
-| Flutter app — Material 3 control panel, add-plugin entry, settings, library | Implemented against a demo repository |
-| `flutter_rust_bridge` bindings | Template only — run codegen to activate |
+| Flutter app — Material 3 control panel, add-plugin entry, settings, library | Implemented, driven by the Rust host |
+| `flutter_rust_bridge` lifecycle bridge | **Wired** — codegen 2.13.0, `FrbPluginRepository` calls the host, no demo fallback in the app |
+| Rust host inside the APK | **Yes** — `cargo ndk` cross-compiles `libinkweave_bridge.so` for `arm64-v8a` and `x86_64`; the Gradle `buildRustHost` task runs before `preBuild` |
 | Spike-0 latency proof (ADR-002 gate) | **Not started — the gate before M1** |
 
 ## Layout
@@ -90,6 +108,7 @@ Rust is pinned by `rust-toolchain.toml`. The setup details worth knowing on this
 | Flutter **3.47.7** | SDK zip from the **Tencent** mirror | Google's CDN (`storage.googleapis.com`) delivers ~150 KB/s here; the Tencent mirror does ~15 MB/s — 1.9 GB in two minutes instead of two hours |
 | JDK **17** | `winget install Microsoft.OpenJDK.17` → `C:\Program Files\Microsoft\jdk-17.0.20.101-hotspot` | Required by the Android Gradle build; `JAVA_HOME` must be a Windows-style path |
 | Android SDK | cmdline-tools to `~/Android/Sdk`, then `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"` | Flutter 3.47 targets compileSdk/targetSdk **36**; the versions come from `FlutterExtension.kt`, not from this repo |
+| `cargo-ndk` + the Rust Android targets | `cargo install cargo-ndk`, `rustup target add aarch64-linux-android x86_64-linux-android` | Cross-compiles the host for the APK; the Gradle task passes the NDK path from `android.ndkDirectory`, so nothing machine-specific is committed |
 
 Flutter also needs its own mirrors for pub and engine artifacts:
 

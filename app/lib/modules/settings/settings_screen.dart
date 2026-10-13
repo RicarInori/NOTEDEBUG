@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../data/models.dart';
+import '../../bridge/api.dart';
 import '../../data/plugin_repository.dart';
 
 /// Settings, including the read-outs that make the background and memory design observable
@@ -16,7 +16,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  MemorySummary _memory = const MemorySummary();
+  MemorySummary _memory =
+      const MemorySummary(processUsedMb: 0, pressure: 'none', overBudget: []);
   List<TaskSummary> _tasks = const [];
 
   @override

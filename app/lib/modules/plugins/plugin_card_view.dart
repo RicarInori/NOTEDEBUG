@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../data/models.dart';
+import '../../bridge/api.dart';
+import '../../data/plugin_extensions.dart';
 
 /// One plugin row in the control panel (§8.3).
 ///
@@ -16,11 +17,11 @@ class PluginCardView extends StatelessWidget {
     this.onOpenContribution,
   });
 
-  final PluginCard card;
+  final PluginCardDto card;
   final ValueChanged<bool> onToggle;
   final VoidCallback onUninstall;
   final VoidCallback onShowLog;
-  final ValueChanged<Contribution>? onOpenContribution;
+  final ValueChanged<ContributionDto>? onOpenContribution;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +52,7 @@ class PluginCardView extends StatelessWidget {
                       Text(card.name, style: theme.textTheme.titleMedium),
                       const SizedBox(height: 2),
                       Text(
-                        'v${card.version} · ${card.kind == PluginKind.internal ? '预置' : '第三方'}',
+                        'v${card.version} · ${card.kind == PluginKindDto.internal ? '预置' : '第三方'}',
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
@@ -126,7 +127,7 @@ class PluginCardView extends StatelessWidget {
     );
   }
 
-  static IconData _icon(PluginCard card) {
+  static IconData _icon(PluginCardDto card) {
     if (card.id.contains('stylus')) return Icons.draw_outlined;
     if (card.id.contains('sync')) return Icons.cloud_outlined;
     if (card.id.contains('manager')) return Icons.tune;
