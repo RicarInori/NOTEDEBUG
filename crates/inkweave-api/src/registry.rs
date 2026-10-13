@@ -38,6 +38,21 @@ pub enum PluginKind {
     Internal,
     /// Third-party WASM extension. Can be enabled, disabled, installed and uninstalled.
     Wasm,
+    /// Third-party native (`cdylib`) extension, loaded with the OS dynamic linker (ADR-003 v2.3).
+    /// Runs in-process with no sandbox, so it is installable and uninstallable but carries the
+    /// permission list as a disclosure rather than a boundary the host enforces.
+    Native,
+}
+
+/// Classify a plugin file the user picked, by extension. `None` means the entry cannot be offered
+/// as an install target, which is the only way the picker needs to know about kinds.
+pub fn kind_of_package(path: &std::path::Path) -> Option<PluginKind> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
+        "wasm" | "inkext" => Some(PluginKind::Wasm),
+        "so" | "dll" | "dylib" => Some(PluginKind::Native),
+        _ => None,
+    }
 }
 
 /// Declared capabilities. Rendered as a permission list in the control panel; enforced by the
@@ -111,9 +126,10 @@ pub struct PluginInfo {
 }
 
 impl PluginInfo {
-    /// Whether the control panel's "uninstall" action applies (WASM only, §8.4).
+    /// Whether the control panel's "uninstall" action applies (§8.4). Everything that arrived from
+    /// outside the binary — WASM or native — can be removed again; internal modules cannot.
     pub fn is_uninstallable(&self) -> bool {
-        self.kind == PluginKind::Wasm
+        self.kind != PluginKind::Internal
     }
 }
 

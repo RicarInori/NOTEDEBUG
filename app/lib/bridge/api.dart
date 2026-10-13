@@ -7,7 +7,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `plugin_state`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 
 /// Initialise the host. Must be called before any other function; idempotent.
 Future<void> bootstrapHost({required String dataDir}) =>
@@ -27,7 +27,18 @@ Future<List<PluginCardDto>> pluginCards() =>
 Future<void> setPluginEnabled({required String id, required bool enabled}) =>
     RustLib.instance.api.crateApiSetPluginEnabled(id: id, enabled: enabled);
 
-/// Install a WASM extension after the user accepted its permissions (§8.4).
+/// Inspect a native plugin file without installing it.
+///
+/// This runs the library's initialisers — unavoidable, because a native plugin's manifest is
+/// compiled into it — but calls none of its lifecycle functions, so no plugin code runs on the
+/// user's behalf before they confirm.
+Future<NativeManifestDto> probeNativeExtension({required String path}) =>
+    RustLib.instance.api.crateApiProbeNativeExtension(path: path);
+
+/// Install an extension after the user accepted its permissions (§8.4).
+///
+/// One entry for both channels: the file the user picked decides whether it is mounted through the
+/// WASM sandbox or the native loader, and both end up in the same registry.
 Future<PluginCardDto> installExtension(
         {required String packagePath,
         required bool network,
@@ -39,7 +50,8 @@ Future<PluginCardDto> installExtension(
         filesystem: filesystem,
         clipboard: clipboard);
 
-/// Uninstall a WASM extension. Internal modules return an error, shown verbatim by the UI.
+/// Uninstall an imported extension (WASM or native). Internal modules return an error, shown
+/// verbatim by the UI.
 Future<void> uninstallExtension({required String id}) =>
     RustLib.instance.api.crateApiUninstallExtension(id: id);
 
@@ -125,6 +137,56 @@ class MemorySummary {
           processUsedMb == other.processUsedMb &&
           pressure == other.pressure &&
           overBudget == other.overBudget;
+}
+
+/// A native plugin's compiled-in manifest, read *before* install so the confirmation dialog can
+/// list exactly what the plugin declares (§8.4).
+///
+/// The permissions are the plugin's own declaration, not a host guess: a native library carries its
+/// manifest inside the binary, so reading it is the only way the user can be asked about the real
+/// request rather than a default set.
+class NativeManifestDto {
+  /// Echoed back so the caller can pair this manifest with the file it picked.
+  final String path;
+  final String id;
+  final String name;
+  final String version;
+  final String author;
+  final String description;
+  final PermissionsDto permissions;
+
+  const NativeManifestDto({
+    required this.path,
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.author,
+    required this.description,
+    required this.permissions,
+  });
+
+  @override
+  int get hashCode =>
+      path.hashCode ^
+      id.hashCode ^
+      name.hashCode ^
+      version.hashCode ^
+      author.hashCode ^
+      description.hashCode ^
+      permissions.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NativeManifestDto &&
+          runtimeType == other.runtimeType &&
+          path == other.path &&
+          id == other.id &&
+          name == other.name &&
+          version == other.version &&
+          author == other.author &&
+          description == other.description &&
+          permissions == other.permissions;
 }
 
 class PermissionsDto {
@@ -227,6 +289,10 @@ class PluginCardDto {
 enum PluginKindDto {
   internal,
   wasm,
+
+  /// A native (`cdylib`) extension the user imported. Installable and uninstallable like WASM,
+  /// but loaded with the OS dynamic linker rather than a sandbox (ADR-003 v2.3).
+  native,
   ;
 }
 

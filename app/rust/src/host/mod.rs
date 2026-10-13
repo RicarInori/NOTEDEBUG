@@ -67,7 +67,9 @@ pub fn bootstrap(data_dir: &Path) -> Result<(), String> {
         .map_err(|error| format!("failed to start the host runtime: {error}"))?;
 
     let root = Context::root();
-    let registry = PluginManager::new(root.clone());
+    // Third-party packages are copied under here by `install`, so the host — not the file picker's
+    // cache directory — owns their lifetime.
+    let registry = PluginManager::new(root.clone(), data_dir.join("extensions"));
     let scheduler = Arc::new(HostBackgroundScheduler::new());
     let memory = Arc::new(HostMemoryGovernor::new());
     let state = Arc::new(HostStateStore::new(data_dir));

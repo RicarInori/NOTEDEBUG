@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -198035323;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1385444852;
 
 // Section: executor
 
@@ -283,6 +283,39 @@ fn wire__crate__api__plugin_state_stream_impl(
                     let output_ok = Ok::<_, ()>({
                         crate::api::plugin_state_stream(api_sink);
                     })?;
+                    std::result::Result::Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__probe_native_extension_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "probe_native_extension",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::probe_native_extension(api_path)?;
                     std::result::Result::Ok(output_ok)
                 })())
             }
@@ -567,6 +600,28 @@ impl SseDecode for crate::api::MemorySummary {
     }
 }
 
+impl SseDecode for crate::api::NativeManifestDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_path = <String>::sse_decode(deserializer);
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_name = <String>::sse_decode(deserializer);
+        let mut var_version = <String>::sse_decode(deserializer);
+        let mut var_author = <String>::sse_decode(deserializer);
+        let mut var_description = <String>::sse_decode(deserializer);
+        let mut var_permissions = <crate::api::PermissionsDto>::sse_decode(deserializer);
+        return crate::api::NativeManifestDto {
+            path: var_path,
+            id: var_id,
+            name: var_name,
+            version: var_version,
+            author: var_author,
+            description: var_description,
+            permissions: var_permissions,
+        };
+    }
+}
+
 impl SseDecode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -635,6 +690,7 @@ impl SseDecode for crate::api::PluginKindDto {
         return match inner {
             0 => crate::api::PluginKindDto::Internal,
             1 => crate::api::PluginKindDto::Wasm,
+            2 => crate::api::PluginKindDto::Native,
             _ => unreachable!("Invalid variant for PluginKindDto: {}", inner),
         };
     }
@@ -744,10 +800,11 @@ fn pde_ffi_dispatcher_primary_impl(
         5 => wire__crate__api__plugin_cards_impl(port, ptr, rust_vec_len, data_len),
         6 => wire__crate__api__plugin_log_impl(port, ptr, rust_vec_len, data_len),
         7 => wire__crate__api__plugin_state_stream_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__scheduler_tasks_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__set_plugin_enabled_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__unfinished_tasks_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__uninstall_extension_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__probe_native_extension_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__scheduler_tasks_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__set_plugin_enabled_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__unfinished_tasks_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__uninstall_extension_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -827,6 +884,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::MemorySummary> for crate::api
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::NativeManifestDto {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.path.into_into_dart().into_dart(),
+            self.id.into_into_dart().into_dart(),
+            self.name.into_into_dart().into_dart(),
+            self.version.into_into_dart().into_dart(),
+            self.author.into_into_dart().into_dart(),
+            self.description.into_into_dart().into_dart(),
+            self.permissions.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::NativeManifestDto {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::NativeManifestDto>
+    for crate::api::NativeManifestDto
+{
+    fn into_into_dart(self) -> crate::api::NativeManifestDto {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::PermissionsDto {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -877,6 +957,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::PluginKindDto {
         match self {
             Self::Internal => 0.into_dart(),
             Self::Wasm => 1.into_dart(),
+            Self::Native => 2.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -1099,6 +1180,19 @@ impl SseEncode for crate::api::MemorySummary {
     }
 }
 
+impl SseEncode for crate::api::NativeManifestDto {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.path, serializer);
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.name, serializer);
+        <String>::sse_encode(self.version, serializer);
+        <String>::sse_encode(self.author, serializer);
+        <String>::sse_encode(self.description, serializer);
+        <crate::api::PermissionsDto>::sse_encode(self.permissions, serializer);
+    }
+}
+
 impl SseEncode for Option<String> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1145,6 +1239,7 @@ impl SseEncode for crate::api::PluginKindDto {
             match self {
                 crate::api::PluginKindDto::Internal => 0,
                 crate::api::PluginKindDto::Wasm => 1,
+                crate::api::PluginKindDto::Native => 2,
                 _ => {
                     unimplemented!("");
                 }

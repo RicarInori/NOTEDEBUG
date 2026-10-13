@@ -23,8 +23,22 @@ extension PluginStateDtoX on PluginStateDto {
 }
 
 extension PluginCardDtoX on PluginCardDto {
-  /// Uninstall applies only to WASM extensions; internal modules are compiled in (ADR-003).
-  bool get isUninstallable => kind == PluginKindDto.wasm;
+  /// Uninstall applies to anything that arrived from outside the binary — WASM or native.
+  /// Internal modules are compiled in and have nothing on disk to remove (ADR-003).
+  bool get isUninstallable => kind != PluginKindDto.internal;
+}
+
+/// Classifies a picked file the way the host does, so the picker can reject the wrong kind
+/// immediately instead of after a round trip. The host remains the authority.
+extension PluginPackageNameX on String {
+  /// A shared library the native loader can mount (ADR-003 v2.3).
+  bool get isNativeLibrary =>
+      endsWith('.so') || endsWith('.dll') || endsWith('.dylib');
+
+  /// A WASM package, whose manifest sits beside the code rather than inside it.
+  bool get isWasmPackage => endsWith('.wasm') || endsWith('.inkext');
+
+  bool get isPluginPackage => isNativeLibrary || isWasmPackage;
 }
 
 extension PermissionsDtoX on PermissionsDto {

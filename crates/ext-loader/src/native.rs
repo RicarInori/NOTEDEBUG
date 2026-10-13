@@ -7,6 +7,7 @@
 //! same compilation as the code that will read that struct.
 
 use cordis_rs::{Context, Plugin, PluginError};
+use inkweave_api::registry::Permissions;
 use inkweave_plugin_abi as abi;
 use libloading::{Library, Symbol};
 use parking_lot::Mutex;
@@ -14,7 +15,10 @@ use std::ffi::{c_char, CString};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// What the import flow needs to show the user before anything is loaded.
+/// What the import flow needs to show the user before anything is mounted.
+///
+/// Read from the library's compiled-in manifest, never from a sidecar file: only the bytes that the
+/// plugin was actually built with can be trusted to describe the code that will run.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeManifest {
     pub id: String,
@@ -22,8 +26,9 @@ pub struct NativeManifest {
     pub version: String,
     pub author: String,
     pub description: String,
-    /// Human-readable permission labels, resolved from the manifest's booleans.
-    pub permissions: Vec<String>,
+    /// Kept as booleans rather than labels so the confirmation dialog can prefill its checkboxes;
+    /// [`Permissions::labels`] renders them for display.
+    pub permissions: Permissions,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -171,6 +176,16 @@ impl NativeLibrary {
         &self.path
     }
 
+    /// Inspect a file without keeping it loaded: open it, read the manifest, and let it drop.
+    ///
+    /// This is what the confirmation dialog is fed by, so that the permissions it lists are the ones
+    /// the plugin actually declares rather than a guess. It runs the library's initialisers — for a
+    /// native plugin there is no way to read a compiled-in manifest without doing so — but calls
+    /// none of the lifecycle symbols, so no plugin code runs on the user's behalf.
+    pub fn probe(path: &Path) -> Result<NativeManifest, LoadError> {
+        Self::open(path).map(|library| library.manifest)
+    }
+
     /// Wrap the library as an ordinary cordis plugin.
     ///
     /// `files_dir` becomes the plugin's private storage root, handed over through the ABI; the host
@@ -308,24 +323,17 @@ fn parse_manifest(blob: abi::ByteRange) -> Result<NativeManifest, LoadError> {
     let file: ManifestFile = toml::from_str(text)
         .map_err(|error| LoadError::Manifest(format!("manifest is not valid TOML: {error}")))?;
 
-    let mut permissions = Vec::new();
-    if file.permissions.network {
-        permissions.push("网络".to_string());
-    }
-    if file.permissions.filesystem {
-        permissions.push("文件".to_string());
-    }
-    if file.permissions.clipboard {
-        permissions.push("剪贴板".to_string());
-    }
-
     Ok(NativeManifest {
         id: file.plugin.id,
         name: file.plugin.name,
         version: file.plugin.version,
         author: file.plugin.author,
         description: file.plugin.description,
-        permissions,
+        permissions: Permissions {
+            network: file.permissions.network,
+            filesystem: file.permissions.filesystem,
+            clipboard: file.permissions.clipboard,
+        },
     })
 }
 

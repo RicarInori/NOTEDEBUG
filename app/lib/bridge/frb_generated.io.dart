@@ -59,6 +59,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   MemorySummary dco_decode_memory_summary(dynamic raw);
 
   @protected
+  NativeManifestDto dco_decode_native_manifest_dto(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
@@ -134,6 +137,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   MemorySummary sse_decode_memory_summary(SseDeserializer deserializer);
+
+  @protected
+  NativeManifestDto sse_decode_native_manifest_dto(
+      SseDeserializer deserializer);
 
   @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
@@ -216,6 +223,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_memory_summary(MemorySummary self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_native_manifest_dto(
+      NativeManifestDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);

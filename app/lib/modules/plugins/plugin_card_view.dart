@@ -52,7 +52,7 @@ class PluginCardView extends StatelessWidget {
                       Text(card.name, style: theme.textTheme.titleMedium),
                       const SizedBox(height: 2),
                       Text(
-                        'v${card.version} · ${card.kind == PluginKindDto.internal ? '预置' : '第三方'}',
+                        'v${card.version} · ${_channel(card.kind)}',
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
@@ -126,6 +126,14 @@ class PluginCardView extends StatelessWidget {
       ),
     );
   }
+
+  /// Which channel the plugin arrived through. Worth showing: a native extension runs in-process
+  /// without a sandbox, so "third-party" alone would hide the distinction that matters (§8.4).
+  static String _channel(PluginKindDto kind) => switch (kind) {
+        PluginKindDto.internal => '预置',
+        PluginKindDto.wasm => 'WASM 扩展',
+        PluginKindDto.native => '原生扩展',
+      };
 
   static IconData _icon(PluginCardDto card) {
     if (card.id.contains('stylus')) return Icons.draw_outlined;

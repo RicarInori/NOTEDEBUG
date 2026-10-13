@@ -68,7 +68,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -198035323;
+  int get rustContentHash => 1385444852;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -98,6 +98,9 @@ abstract class RustLibApi extends BaseApi {
       {required String id, required int lines});
 
   Stream<PluginStateChangeDto> crateApiPluginStateStream();
+
+  Future<NativeManifestDto> crateApiProbeNativeExtension(
+      {required String path});
 
   Future<List<TaskSummary>> crateApiSchedulerTasks();
 
@@ -294,12 +297,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<NativeManifestDto> crateApiProbeNativeExtension(
+      {required String path}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(path, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 8, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_native_manifest_dto,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiProbeNativeExtensionConstMeta,
+      argValues: [path],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiProbeNativeExtensionConstMeta =>
+      const TaskConstMeta(
+        debugName: "probe_native_extension",
+        argNames: ["path"],
+      );
+
+  @override
   Future<List<TaskSummary>> crateApiSchedulerTasks() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 8, port: port_);
+            funcId: 9, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_task_summary,
@@ -325,7 +354,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(id, serializer);
         sse_encode_bool(enabled, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 9, port: port_);
+            funcId: 10, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -349,7 +378,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(owner, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 10, port: port_);
+            funcId: 11, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_u_32,
@@ -373,7 +402,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(id, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 11, port: port_);
+            funcId: 12, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -480,6 +509,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       processUsedMb: dco_decode_u_32(arr[0]),
       pressure: dco_decode_String(arr[1]),
       overBudget: dco_decode_list_String(arr[2]),
+    );
+  }
+
+  @protected
+  NativeManifestDto dco_decode_native_manifest_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    return NativeManifestDto(
+      path: dco_decode_String(arr[0]),
+      id: dco_decode_String(arr[1]),
+      name: dco_decode_String(arr[2]),
+      version: dco_decode_String(arr[3]),
+      author: dco_decode_String(arr[4]),
+      description: dco_decode_String(arr[5]),
+      permissions: dco_decode_permissions_dto(arr[6]),
     );
   }
 
@@ -718,6 +764,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         processUsedMb: var_processUsedMb,
         pressure: var_pressure,
         overBudget: var_overBudget);
+  }
+
+  @protected
+  NativeManifestDto sse_decode_native_manifest_dto(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final var_path = sse_decode_String(deserializer);
+    final var_id = sse_decode_String(deserializer);
+    final var_name = sse_decode_String(deserializer);
+    final var_version = sse_decode_String(deserializer);
+    final var_author = sse_decode_String(deserializer);
+    final var_description = sse_decode_String(deserializer);
+    final var_permissions = sse_decode_permissions_dto(deserializer);
+    return NativeManifestDto(
+        path: var_path,
+        id: var_id,
+        name: var_name,
+        version: var_version,
+        author: var_author,
+        description: var_description,
+        permissions: var_permissions);
   }
 
   @protected
@@ -961,6 +1028,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.processUsedMb, serializer);
     sse_encode_String(self.pressure, serializer);
     sse_encode_list_String(self.overBudget, serializer);
+  }
+
+  @protected
+  void sse_encode_native_manifest_dto(
+      NativeManifestDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.version, serializer);
+    sse_encode_String(self.author, serializer);
+    sse_encode_String(self.description, serializer);
+    sse_encode_permissions_dto(self.permissions, serializer);
   }
 
   @protected

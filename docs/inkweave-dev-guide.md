@@ -1,6 +1,6 @@
 # Inkweave — Cordis 式插件化跨平台手写笔记软件 · 开发指南
 
-> 版本：**v2.2**（第四轮：延迟测量方法补充稿）· 2026-10-13
+> 版本：**v2.4**（第五轮：原生插件装入契约）· 2026-10-13
 > 变更：合并架构评审（4 致命缺陷修复）与可用性评审（23 项遗漏补全）；**本版新增 ADR-006~008 与 §8「插件管理与运行时治理」**，把「添加插件入口 / 插件热加载与关闭 / 统一控制面板 / Material Design / 手写笔与 WebDAV 预置插件 / 后台机制与内存管理」六项要求正式纳入正文
 > 读者：本项目的后续开发者与 AI 协作者（任何模型读完后应能独立推进开发）
 > 设计信条：**一切皆为插件 · 注册即可撤销 · 无特权核心 · 零妥协的低延迟**
@@ -16,6 +16,7 @@
 | **v2.1** | **2026-10-12** | **合入六项新要求（本次改动）**：① §8.4 新增「添加插件」入口；② §8.2 定义插件**热加载/关闭**分级语义（ADR-007）；③ §8.3 定义**统一控制面板**（ADR-008）；④ ADR-006 确立 **Material Design 3** 为 UI 设计语言；⑤ §8.7 明确**手写笔系统**与 **WebDAV 同步**为可开关**预置插件**；⑥ §8.5/§8.6 补齐**后台机制**与**内存管理**统一治理层。同步修订 §0 包体积决策、§2.3 不移植清单、§9.5 技术债务、§10 路线图。**合并锚点见本节** |
 | **v2.2** | **2026-10-13** | 新增 **ADR-002 补充：延迟测量方法**——承认摄像机不是唯一手段，给出 Perfetto 与应用内探针两种替代、各自精度，并明确「软件方法可判失败、不可判通过」；记录「未做真机标定即推进 M1」为已接受风险。依据：M0 已交付完毕、Spike-0 无法在本机取得真机数据 |
 | **v2.3** | **2026-10-13** | **ADR-003 修订**：用户要求笔记功能由用户自行导入，故允许**原生动态库（cdylib）**插件，但**只走 C ABI**（保留原裁决中关于 Rust 无稳定 ABI 的正确观察，约束比原方案更严）；同步修订 §8.1 的分发策略。明示未解决项：**Dart 侧 UI 不能运行期加载**，插件 UI 仍由宿主渲染。依据：§7.1 既已确定 WASM 无法触达 GPU，渲染型插件只能走原生 |
+| **v2.4** | **2026-10-13** | **ADR-003 补充：原生插件的装入契约**（见下）——把 v2.3 的「可以装载」推进到「可以装入」：探测先于确认、包复制进宿主私有存储后再复核、挂载对象必须是用户确认过的那份字节；`PluginKind::Native` 与 WASM 共用同一套四动词与同一个控制面板分区。附 Android 模拟器端到端实测结论。**仍未解决**：原生通道无沙箱，权限清单是告知而非隔离边界（WASM 沙箱仍为 M6） |
 
 ---
 
@@ -181,6 +182,40 @@ wgpu 渲染。WASM 通道因此保留给不需要 GPU 的第三方逻辑，渲�
 **本修订不解决的（明示，避免被误读）**：**Dart 侧 UI 无法运行期加载**——Flutter 的 AOT 构建不支持
 载入 Dart 代码。因此「笔记插件」的 **UI 部分仍须由宿主提供或随宿主发版**，插件贡献的界面一律走
 §8.3 的「宿主渲染贡献点」路径。也就是说，**"用户导入"覆盖的是能力与逻辑，不包括 UI 代码本身**。
+
+### ADR-003 v2.4 补充：原生插件的「装入契约」
+
+v2.3 说的是「装载」（`dlopen` 一个 cdylib 是可行的）。把「装载」变成用户可用的「装入」，还差一条
+契约——**用户确认的字节，必须就是被挂载的字节**。原生通道没有沙箱，权限清单只是**告知**，因此这条
+契约是它在安全上唯一能拿出的东西，必须写成规范而不是实现细节。
+
+**装入五步（顺序不可调换）**
+
+1. **探测先于确认**：清单**从二进制内部**读取（`inkweave_plugin_abi_version` → `..._manifest`），
+   不读同名 sidecar 文件——只有与代码同一次编译产出的字节才可信。此步会运行库的初始化段，但**不调用
+   任何生命周期函数**。确认对话框据此列出插件**真实申请**的权限，而非一套默认值。
+2. **复制进宿主私有存储**：`<support>/extensions/<id>/plugin.<so|dll|dylib>`，并创建
+   `<id>/files/` 作为经 ABI 交给插件的私有数据目录。用户选中的文件可能位于选择器缓存区，随时可能被
+   回收，因此**不能直接挂载它**。
+3. **复核副本**：对副本再探测一次，与第 1 步的清单**逐字段比对**；不一致即拒绝装入并删除已复制的目录。
+   这一步关掉"确认与装载之间文件被替换"的时间窗。
+4. **挂载即 `dlopen` 副本**：`enable` 在每次装入时重新打开库（而非安装时打开一次），
+   这样停用/启用循环才能正常走 `Suspended → Active`。
+5. **拒绝即回滚**：权限未被全部接受、ABI 不匹配、清单不一致、挂载失败——四种情况都必须**不留下任何
+   卡片与磁盘残留**。
+
+**与四动词的关系**：`PluginKind::Native` 与 `Wasm` 共用 ADR-007 的四动词，控制面板**不新增管理路径**，
+只在卡片上标注通道（预置 / WASM 扩展 / 原生扩展）——因为"同进程无沙箱"这一点不能对用户隐藏。
+`uninstall` 先 `disable`（触发 `disable` + `destroy`，并让宿主 `dlclose`），再删除
+`<support>/extensions/<id>/` 整个目录。
+
+**平台事实（Android 实测，非推断）**：应用私有存储中的 `.so` **可以** `dlopen`——SELinux 会对
+`/data/data/<pkg>/files/extensions/<id>/plugin.so` 记录 `avc: granted { execute }`，不是拒绝。
+因此"只能加载 APK 内 `lib/` 里的库"这一常见说法不适用于按权限表赋权的应用私有目录。
+选择器（DocumentsUI）对 `.so` 的可选性也不受 MIME 过滤影响，`FileType.any` + 宿主侧扩展名校验即可。
+
+**仍然不解决的**：原生插件与宿主**同进程**，它能访问宿主能访问的一切；权限清单是**披露**不是**边界**。
+需要真隔离的能力只能等 M6 的 WASM 沙箱（且 WASM 触达不了 GPU，见 §7.1）。
 
 ### ADR-003：第一方插件形态 = 静态 crate（F-1 修复，已由 v2.3 修订）
 
@@ -532,10 +567,11 @@ events_listen = ["ink/stroke-committed"]
 | 形态 | 编译期 | 运行期能力 | 分发 |
 |---|---|---|---|
 | 内部模块（第一方 crate） | 由 `Cargo feature` 决定是否编入 `libinkweave` | 启 / 停（挂载 / 卸载 Fiber） | 随宿主发版 |
-| WASM 外部扩展（第三方） | 不参与编译 | **装入 / 卸载 / 启 / 停** | 应用内「添加插件」导入 |
+| **原生动态库（cdylib）** | 不参与编译 | **装入 / 卸载 / 启 / 停** | 应用内「添加插件」导入 `.so` / `.dll` / `.dylib`（ADR-003 v2.3/v2.4） |
+| WASM 外部扩展（第三方） | 不参与编译 | **装入 / 卸载 / 启 / 停** | 应用内「添加插件」导入 `.wasm` / `.inkext` |
 
 - **第一方功能（ink / pdf / storage / sync / stylus / plugin-manager）默认启用，但不再要求"必须编译进宿主"**：笔记功能（ink-engine）按用户要求改为**用户导入并启用**的形态，交付为原生动态库（见 ADR-003 v2.3 修订）；平台适配等无法动态加载的部件仍保持静态链接。**第三方 WASM 扩展**的按需装入策略不变。
-- **动态性只给第三方 WASM 扩展**（ADR-003 的延续），这样"添加插件入口 + 热加载/关闭"由 WASM 通道承接，不必给内部模块引入动态分发。
+- **动态分发有两条通道，适用面不同**：WASM 通道承接需强沙箱的纯逻辑扩展（M6）；原生通道承接渲染型能力（WASM 触达不了 GPU，§7.1）。两者**共用同一套四动词与同一个控制面板**，卡片上标注通道——原生通道**无沙箱**，这一点必须对用户可见（ADR-003 v2.4）。
 - **新增 Definition 层服务 `PluginRegistry`**（`inkweave-api`）：
 
 ```rust
@@ -545,14 +581,14 @@ pub trait PluginRegistry: Service {
     fn state(&self, id: PluginId) -> FiberState;
     async fn enable(&self, id: PluginId) -> Result<()>;
     async fn disable(&self, id: PluginId) -> Result<()>;
-    async fn install(&self, pkg: ExtensionPackage) -> Result<PluginId>;   // 仅 WASM
-    async fn uninstall(&self, id: PluginId) -> Result<()>;                // 仅 WASM
+    async fn install(&self, pkg: ExtensionPackage) -> Result<PluginId>;   // WASM / 原生
+    async fn uninstall(&self, id: PluginId) -> Result<()>;                // WASM / 原生
     fn subscribe(&self) -> Stream<FiberStateChange>;       // 经 Lifecycle Bridge 推给 Dart
 }
 
 pub struct PluginInfo {
     pub id: PluginId, pub name: String, pub version: String,
-    pub kind: PluginKind,            // Internal | Wasm
+    pub kind: PluginKind,            // Internal | Wasm | Native
     pub state: FiberState,
     pub capabilities: StylusCapabilities,   // 能力位图（UI 据此显隐入口）
     pub permissions: Permissions,           // fs/net/clipboard
@@ -610,17 +646,20 @@ pub struct PluginInfo {
 - **快照取数**：卡片数据来自 `PluginRegistry::snapshot()`（ArcSwap 无锁读快照，ADR-004），状态变更经 `subscribe()` 增量刷新，面板冷开不做重活（§0 指标：< 300ms）。
 - **危险操作二次确认**：卸载（删除扩展包）走 `AlertDialog` 确认；停用同步类插件时提示"将取消其后台任务"。
 
-### 8.4 「添加插件」入口（仅面向 WASM 外部扩展）
+### 8.4 「添加插件」入口（面向 WASM 与原生外部扩展）
 
-入口位置：控制面板 FAB（§8.3）。**导入流程**：
+入口位置：控制面板 FAB（§8.3）。**导入流程**（按选中文件扩展名分流，两条通道共享同一套权限确认与挂载路径）：
 
-1. 文件选择（Flutter `file_picker`，限 `.wasm` / `.inkext` 包）。
-2. 读取 `manifest`（§7.2 schema），校验：`kind = "wasm"`、`abi` 与宿主 `inkweave_abi_v1` 兼容、`version` 合法、签名有效（M6 起强制，M0–M5 开发期放行并标注"未签名"）。
-3. **权限清单二次确认**：`permissions`（network / filesystem / clipboard）逐项展示，用户确认后方可装入（借鉴 Obsidian 渐进式权限，§7.1）。
-4. 写入 `extensions/<id>/`，调用 `PluginRegistry::install()` → `ctx.plugin()` 挂载 → 状态入 `Active`（或 `Pending` 等依赖）。
-5. 控制面板实时出现该扩展卡片，可立即停用或卸载。
+1. 文件选择（Flutter `file_picker`）：`.wasm` / `.inkext` → WASM 通道；`.so` / `.dll` / `.dylib` → 原生通道。宿主对扩展名做权威校验，选择器侧不做 MIME 过滤（Android 的扩展名→MIME 映射不可靠，被拒的选中好过打不开的选择器）。
+2. **取得 manifest 并二次确认**：
+   - WASM：读包内 `manifest.toml`（§7.2 schema），校验 `kind = "wasm"`、`abi` 与 `inkweave_abi_v1` 兼容、`version` 合法、签名有效（M6 起强制，M0–M5 开发期放行并标注"未签名"）。
+   - 原生：**从二进制内部**探测 manifest（ADR-003 v2.4）——此步会运行库的初始化段但不调用任何生命周期函数；对话框据插件**真实申请**的权限填表，并同时标注"同进程运行，无沙箱"。
+   - 两个通道都必须让用户逐项确认 `permissions`（network / filesystem / clipboard）；**未勾选项即拒绝装入**，而不是"以更窄的授权继续运行"。
+3. 落入宿主私有存储 `extensions/<id>/`：原生通道还要在挂载前**复核副本与第 2 步清单逐字段一致**（ADR-003 v2.4 第 3 步）。
+4. 调用 `PluginRegistry::install()` → `ctx.plugin()` 挂载 → 状态入 `Active`（或 `Pending` 等依赖）。**失败必须回滚**：不留卡片、不留磁盘残留。
+5. 控制面板实时出现该扩展卡片，可立即停用或卸载；卡片标注通道（WASM 扩展 / 原生扩展）。
 
-**拒绝条件**（任一命中即拒，给明确原因，不落盘）：manifest 缺失/非法、ABI 版本不兼容、签名校验失败（强制期）、内存预算超过上限、`id` 与已装入冲突。
+**拒绝条件**（任一命中即拒，给明确原因，不落盘）：manifest 缺失/非法、ABI 版本不兼容、签名校验失败（强制期）、权限未被全部接受、副本与确认时不一致、内存预算超过上限、`id` 与已装入冲突。
 
 **内部模块不走此入口**：它们编译期已组合，其"启用/停用"在控制面板内完成，不涉及文件导入。
 
@@ -814,7 +853,7 @@ inkweave/
 |---|---|---|
 | ADR-001 | Flutter UI + PlatformView 画布 | 接受（Spike-0 验证中） |
 | ADR-002 | 输入路径原生直捕获，不经 Flutter | 接受；**测量方法见 v2.2 补充**（摄像机非唯一手段；当前状态：真机标定未做，风险已接受） |
-| ADR-003 | 第一方插件 = 静态 crate，弃 dylib | **v2.3 修订**：保留「不用 Rust ABI」，允许原生 cdylib（只走 C ABI）以支持用户导入笔记功能；UI 仍不可动态加载 |
+| ADR-003 | 第一方插件 = 静态 crate，弃 dylib | **v2.3 修订**：保留「不用 Rust ABI」，允许原生 cdylib（只走 C ABI）以支持用户导入笔记功能；UI 仍不可动态加载。**v2.4 补充**：原生插件「装入契约」（探测先于确认 / 复制后复核 / 挂载已确认的字节 / 失败回滚） |
 | ADR-004 | ArcSwap 无锁服务解析 + Arc 互持 | 接受 |
 | ADR-005 | PDFium 句柄池 + 单写线程 | 接受 |
 | ADR-006 | UI 设计语言 = Material Design 3 | 接受（v2.1） |

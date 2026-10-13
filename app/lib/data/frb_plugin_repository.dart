@@ -27,6 +27,10 @@ class FrbPluginRepository implements PluginRepository {
   Future<void> setEnabled(String id, bool enabled) => setPluginEnabled(id: id, enabled: enabled);
 
   @override
+  Future<NativeManifestDto> probeNative(String packagePath) =>
+      probeNativeExtension(path: packagePath);
+
+  @override
   Future<PluginCardDto> install(String packagePath, PermissionsDto accepted) => installExtension(
         packagePath: packagePath,
         network: accepted.network,

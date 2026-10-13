@@ -15,9 +15,15 @@ wasm-runtime = []
 [dependencies]
 cordis-rs.workspace = true
 inkweave-api.workspace = true
+# The native (cdylib) channel: `plugin-manager` owns the install policy, the loader owns the ABI.
+ext-loader.workspace = true
 async-trait.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 toml.workspace = true
 # Only for the broadcast channel that carries state transitions to the UI.
 tokio = { version = "1", features = ["sync"] }
+
+[dev-dependencies]
+# The install/uninstall test mounts for real, so it needs an async runtime.
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }

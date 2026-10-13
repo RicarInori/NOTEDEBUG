@@ -135,10 +135,15 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
   }
 
   /// The "add plugin" entry: pick a package, confirm permissions, install, hot-load.
+  ///
+  /// A native library is probed first so the dialog can show the plugin's own name and permission
+  /// request; a WASM package carries its manifest beside the code and is validated by the host.
   Future<void> _addPlugin() async {
-    // file_picker 13 exposes a static `pickFiles` returning a list; empty means cancelled.
+    // file_picker 13 exposes a static `pickFiles` returning a list; empty means cancelled. The type
+    // filter is `any` on purpose: Android's custom-type picker maps extensions to MIME types
+    // unreliably, and a rejected pick here beats an empty picker the user cannot get past.
     final picked = await FilePicker.pickFiles(
-      dialogTitle: '选择插件包（.wasm / .inkext）',
+      dialogTitle: '选择插件包（.wasm / .inkext / .so / .dll）',
       type: FileType.any,
     );
     if (picked.isEmpty || !mounted) return;
@@ -149,10 +154,26 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
       _notify('该平台未提供文件路径，无法安装');
       return;
     }
+    if (!file.name.isPluginPackage) {
+      _notify('无法识别的插件包类型：${file.name}');
+      return;
+    }
+
+    NativeManifestDto? manifest;
+    if (file.name.isNativeLibrary) {
+      try {
+        manifest = await widget.repository.probeNative(path);
+      } catch (error) {
+        _notify('无法读取插件清单：$error');
+        return;
+      }
+      if (!mounted) return;
+    }
 
     final accepted = await showDialog<PermissionsDto>(
       context: context,
-      builder: (context) => AddPluginDialog(packageName: file.name),
+      builder: (context) =>
+          AddPluginDialog(packageName: file.name, manifest: manifest),
     );
     if (accepted == null) return;
 
@@ -241,7 +262,7 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
         .where((card) => card.kind == PluginKindDto.internal && card.state.isActive)
         .toList();
     final activeExtensions = _cards
-        .where((card) => card.kind == PluginKindDto.wasm && card.state.isActive)
+        .where((card) => card.isUninstallable && card.state.isActive)
         .toList();
     final inactive = _cards.where((card) => !card.state.isActive).toList();
 

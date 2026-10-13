@@ -68,8 +68,17 @@ async fn the_host_table_survives_the_boundary_and_the_lifecycle_runs() {
     assert_eq!(library.manifest().version, "0.1.0");
     assert_eq!(
         library.manifest().permissions,
-        vec!["文件".to_string()],
-        "permission booleans must be resolved for the import confirmation dialog"
+        inkweave_api::registry::Permissions {
+            network: false,
+            filesystem: true,
+            clipboard: false,
+        },
+        "the confirmation dialog prefills its checkboxes from these booleans"
+    );
+    assert_eq!(
+        library.manifest().permissions.labels(),
+        vec!["文件"],
+        "and renders them as labels without a second mapping"
     );
 
     let plugin = library
@@ -112,6 +121,29 @@ fn opening_something_that_is_not_a_library_reports_a_load_error() {
     std::fs::write(&path, b"this is not a shared library").expect("write the decoy");
 
     let error = NativeLibrary::open(&path).expect_err("must refuse");
+    assert!(
+        matches!(error, ext_loader::native::LoadError::Open { .. }),
+        "expected an open failure, got {error:?}"
+    );
+}
+
+/// The probe is what feeds the confirmation dialog, so it must report exactly the manifest the
+/// mount path will use — a divergence here would mean the user consents to one thing and runs
+/// another.
+#[test]
+fn probing_reports_the_same_manifest_the_mount_path_uses() {
+    let artifact = example_plugin();
+
+    let probed = NativeLibrary::probe(&artifact).expect("probe the plugin");
+    let mounted = NativeLibrary::open(&artifact).expect("open the plugin");
+    assert_eq!(
+        probed,
+        mounted.manifest().clone(),
+        "the dialog must show the manifest the host will enforce"
+    );
+
+    // A file that is not a library must be refused here too, before the user is asked anything.
+    let error = NativeLibrary::probe(&scratch_dir("probe").join("missing.so")).expect_err("refuse");
     assert!(
         matches!(error, ext_loader::native::LoadError::Open { .. }),
         "expected an open failure, got {error:?}"

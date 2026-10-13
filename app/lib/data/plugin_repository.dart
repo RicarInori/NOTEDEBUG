@@ -1,4 +1,5 @@
 import '../bridge/api.dart';
+import 'plugin_extensions.dart';
 
 /// The single management seam the UI talks to.
 ///
@@ -15,7 +16,13 @@ abstract class PluginRepository {
 
   Future<void> setEnabled(String id, bool enabled);
 
-  /// Install a WASM extension after the user accepted [accepted] (§8.4).
+  /// Read a native plugin's compiled-in manifest without installing it, so the confirmation dialog
+  /// can list what the plugin *actually* asks for (§8.4).
+  Future<NativeManifestDto> probeNative(String packagePath);
+
+  /// Install an imported extension after the user accepted [accepted] (§8.4). The file decides the
+  /// channel: `.wasm`/`.inkext` go through the sandbox, `.so`/`.dll`/`.dylib` through the native
+  /// loader.
   Future<PluginCardDto> install(String packagePath, PermissionsDto accepted);
 
   Future<void> uninstall(String id);
@@ -162,13 +169,41 @@ class DemoPluginRepository implements PluginRepository {
         lastError: card.lastError,
       );
 
+  /// Stands in for the Rust probe. The real host reads these bytes out of the library itself; the
+  /// values here are only what the widget tests need, and the native case declares `filesystem`
+  /// alone so a test can tell "the dialog listed the plugin's request" from "the dialog listed
+  /// everything".
+  @override
+  Future<NativeManifestDto> probeNative(String packagePath) async {
+    final leaf = _leafName(packagePath);
+    if (!leaf.isNativeLibrary) {
+      throw StateError('$leaf 不是原生动态库');
+    }
+    return NativeManifestDto(
+      path: packagePath,
+      id: 'com.example.native-demo',
+      name: '示例原生插件',
+      version: '0.1.0',
+      author: 'Inkweave',
+      description: '演示模式：真实清单由 Rust 侧从动态库中读出',
+      permissions: const PermissionsDto(
+        network: false,
+        filesystem: true,
+        clipboard: false,
+      ),
+    );
+  }
+
   @override
   Future<PluginCardDto> install(String packagePath, PermissionsDto accepted) async {
-    final leaf = packagePath.split(RegExp(r'[/\\]')).last.replaceAll('.wasm', '');
+    final leaf = _leafName(packagePath);
+    final native = leaf.isNativeLibrary;
+    final id =
+        'com.example.${leaf.replaceAll(RegExp(r'\.(wasm|inkext|so|dll|dylib)$'), '')}';
     final card = _card(
-      'com.example.$leaf',
+      '$id${native ? '.native' : ''}',
       '第三方扩展',
-      PluginKindDto.wasm,
+      native ? PluginKindDto.native : PluginKindDto.wasm,
       PluginStateDto.active,
       description: '来自 $packagePath',
       permissions: accepted,
@@ -176,6 +211,8 @@ class DemoPluginRepository implements PluginRepository {
     _cards = [..._cards, card];
     return card;
   }
+
+  static String _leafName(String path) => path.split(RegExp(r'[/\\]')).last;
 
   @override
   Future<void> uninstall(String id) async {

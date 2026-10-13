@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:inkweave/bridge/api.dart';
 import 'package:inkweave/data/plugin_extensions.dart';
 import 'package:inkweave/data/plugin_repository.dart';
+import 'package:inkweave/modules/plugins/add_plugin_dialog.dart';
 import 'package:inkweave/modules/plugins/control_panel_screen.dart';
 import 'package:inkweave/modules/plugins/plugin_card_view.dart';
 
@@ -27,10 +28,14 @@ Future<void> settle(WidgetTester tester, {int frames = 6}) async {
   }
 }
 
-Future<void> pumpPanel(WidgetTester tester, PluginRepository repository) async {
+Future<void> pumpPanel(
+  WidgetTester tester,
+  PluginRepository repository, {
+  double height = 3200,
+}) async {
   // A phone-sized viewport only builds the first card or two, so an assertion about "any card"
   // would silently be about whichever ones a ListView happened to build. Widen it.
-  tester.view.physicalSize = const Size(1200, 3200);
+  tester.view.physicalSize = Size(1200, height);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
@@ -127,7 +132,7 @@ void main() {
       expect(find.textContaining('启用 6 个'), findsOneWidget);
     });
 
-    testWidgets('uninstall is offered only for WASM extensions', (tester) async {
+    testWidgets('uninstall is not offered for compiled-in modules', (tester) async {
       final repository = DemoPluginRepository();
       await pumpPanel(tester, repository);
 
@@ -137,6 +142,134 @@ void main() {
         (await repository.cards()).every((card) => !card.isUninstallable),
         isTrue,
       );
+    });
+
+    testWidgets('an imported native plugin lands in the extensions section', (tester) async {
+      final repository = DemoPluginRepository();
+      await repository.install(
+        '/tmp/libexample_native.so',
+        const PermissionsDto(network: false, filesystem: true, clipboard: false),
+      );
+      await pumpPanel(tester, repository, height: 6000);
+
+      expect(find.text('已装入的扩展'), findsOneWidget);
+      expect(
+        find.text('v0.1.0 · 原生扩展'),
+        findsOneWidget,
+        reason: 'the card must say which channel the plugin came through',
+      );
+    });
+  });
+
+  group('add-plugin confirmation', () {
+    CheckboxListTile boxFor(WidgetTester tester, String title) =>
+        tester.widget<CheckboxListTile>(
+          find.ancestor(
+            of: find.text(title),
+            matching: find.byType(CheckboxListTile),
+          ),
+        );
+
+    testWidgets('a native manifest prefills the boxes with the plugin\'s own request',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AddPluginDialog(
+              packageName: 'libexample_native.so',
+              manifest: const NativeManifestDto(
+                path: '/tmp/libexample_native.so',
+                id: 'com.inkweave.example.native',
+                name: '示例原生插件',
+                version: '0.1.0',
+                author: 'Inkweave',
+                description: '演示原生动态库插件',
+                permissions: PermissionsDto(
+                  network: false,
+                  filesystem: true,
+                  clipboard: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // The dialog must describe the plugin, not just the file name the user picked.
+      expect(find.text('示例原生插件'), findsOneWidget);
+      expect(find.textContaining('libexample_native.so · v0.1.0'), findsOneWidget);
+      expect(find.text('演示原生动态库插件'), findsOneWidget);
+
+      // And it must ask about exactly what the plugin declared — nothing pre-granted.
+      expect(boxFor(tester, '文件').value, isTrue);
+      expect(boxFor(tester, '网络').value, isFalse);
+      expect(boxFor(tester, '剪贴板').value, isFalse);
+
+      // The in-process warning is the one thing a native plugin must not hide.
+      expect(find.textContaining('同进程运行'), findsOneWidget);
+    });
+
+    testWidgets('an unprobed package still offers all three permissions', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: AddPluginDialog(packageName: 'example.wasm')),
+        ),
+      );
+
+      expect(boxFor(tester, '网络').value, isTrue);
+      expect(boxFor(tester, '文件').value, isTrue);
+      expect(boxFor(tester, '剪贴板').value, isTrue);
+      expect(find.textContaining('同进程运行'), findsNothing);
+    });
+  });
+
+  group('native import plumbing', () {
+    test('the picker accepts shared libraries and refuses everything else', () {
+      expect('libexample_native.so'.isPluginPackage, isTrue);
+      expect('example_native.dll'.isPluginPackage, isTrue);
+      expect('libexample.dylib'.isPluginPackage, isTrue);
+      expect('example.wasm'.isPluginPackage, isTrue);
+      expect('example.inkext'.isPluginPackage, isTrue);
+
+      expect('libexample_native.so'.isNativeLibrary, isTrue);
+      expect('example.wasm'.isNativeLibrary, isFalse);
+      expect('notes.pdf'.isPluginPackage, isFalse);
+      expect('archive.zip'.isPluginPackage, isFalse);
+    });
+
+    test('probing a native library yields its declared permissions', () async {
+      final repository = DemoPluginRepository();
+      final manifest = await repository.probeNative('/tmp/libexample_native.so');
+
+      expect(manifest.id, 'com.example.native-demo');
+      expect(manifest.permissions.filesystem, isTrue);
+      expect(
+        manifest.permissions.labels,
+        ['文件'],
+        reason: 'only the declared permission may be offered',
+      );
+
+      expect(
+        () => repository.probeNative('/tmp/example.wasm'),
+        throwsA(isA<StateError>()),
+        reason: 'a WASM package carries its manifest beside the code, not inside it',
+      );
+    });
+
+    test('installing a shared library registers an uninstallable native card', () async {
+      final repository = DemoPluginRepository();
+      final before = (await repository.cards()).length;
+
+      final installed = await repository.install(
+        '/tmp/libexample_native.so',
+        const PermissionsDto(network: false, filesystem: true, clipboard: false),
+      );
+      expect(installed.kind, PluginKindDto.native);
+      expect(installed.isUninstallable, isTrue);
+      expect((await repository.cards()).length, before + 1);
+
+      await repository.uninstall(installed.id);
+      expect((await repository.cards()).length, before);
     });
   });
 

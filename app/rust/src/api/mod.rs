@@ -27,6 +27,9 @@ use std::path::Path;
 pub enum PluginKindDto {
     Internal,
     Wasm,
+    /// A native (`cdylib`) extension the user imported. Installable and uninstallable like WASM,
+    /// but loaded with the OS dynamic linker rather than a sandbox (ADR-003 v2.3).
+    Native,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,6 +162,7 @@ impl From<inkweave_api::registry::PluginInfo> for PluginCardDto {
             kind: match value.kind {
                 PluginKind::Internal => PluginKindDto::Internal,
                 PluginKind::Wasm => PluginKindDto::Wasm,
+                PluginKind::Native => PluginKindDto::Native,
             },
             state: plugin_state(value.state),
             author: value.author,
@@ -186,6 +190,24 @@ impl From<inkweave_api::registry::PluginInfo> for PluginCardDto {
             last_error: value.last_error,
         }
     }
+}
+
+/// A native plugin's compiled-in manifest, read *before* install so the confirmation dialog can
+/// list exactly what the plugin declares (§8.4).
+///
+/// The permissions are the plugin's own declaration, not a host guess: a native library carries its
+/// manifest inside the binary, so reading it is the only way the user can be asked about the real
+/// request rather than a default set.
+#[derive(Clone, Debug)]
+pub struct NativeManifestDto {
+    /// Echoed back so the caller can pair this manifest with the file it picked.
+    pub path: String,
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub description: String,
+    pub permissions: PermissionsDto,
 }
 
 /// Memory read-out for the panel header (§8.6).
@@ -248,7 +270,31 @@ pub fn set_plugin_enabled(id: String, enabled: bool) -> Result<(), String> {
     })
 }
 
-/// Install a WASM extension after the user accepted its permissions (§8.4).
+/// Inspect a native plugin file without installing it.
+///
+/// This runs the library's initialisers — unavoidable, because a native plugin's manifest is
+/// compiled into it — but calls none of its lifecycle functions, so no plugin code runs on the
+/// user's behalf before they confirm.
+pub fn probe_native_extension(path: String) -> Result<NativeManifestDto, String> {
+    let manifest = host::app()
+        .registry
+        .probe_native(Path::new(&path))
+        .map_err(|error| error.to_string())?;
+    Ok(NativeManifestDto {
+        path,
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        author: manifest.author,
+        description: manifest.description,
+        permissions: manifest.permissions.into(),
+    })
+}
+
+/// Install an extension after the user accepted its permissions (§8.4).
+///
+/// One entry for both channels: the file the user picked decides whether it is mounted through the
+/// WASM sandbox or the native loader, and both end up in the same registry.
 pub fn install_extension(
     package_path: String,
     network: bool,
@@ -272,7 +318,8 @@ pub fn install_extension(
     })
 }
 
-/// Uninstall a WASM extension. Internal modules return an error, shown verbatim by the UI.
+/// Uninstall an imported extension (WASM or native). Internal modules return an error, shown
+/// verbatim by the UI.
 pub fn uninstall_extension(id: String) -> Result<(), String> {
     host::block_on(async move {
         host::app()
@@ -442,6 +489,23 @@ mod tests {
         assert!(
             error.contains("internal module"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn probing_a_file_that_is_not_a_plugin_reports_why() {
+        let _guard = boot();
+
+        let dir = std::env::temp_dir().join(format!("inkweave-probe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        let decoy = dir.join("not-a-plugin.bin");
+        std::fs::write(&decoy, b"definitely not a shared library").expect("write the decoy");
+
+        let error = probe_native_extension(decoy.to_string_lossy().to_string())
+            .expect_err("must refuse a file that is not a library");
+        assert!(
+            error.contains("not") || error.contains("无效") || error.contains("invalid"),
+            "the dialog needs a reason it can show, got: {error}"
         );
     }
 
