@@ -12,6 +12,8 @@
 //! different notation. So the bridge declares explicit DTOs here and converts. That also decouples
 //! the wire format from internal types: reshaping `PluginInfo` cannot silently change the Dart API.
 
+// `StreamSink` is not a library type: frb generates it into this crate's `frb_generated` module.
+use crate::frb_generated::StreamSink;
 use crate::host;
 use inkweave_api::registry::InstallRequest;
 use inkweave_api::runtime::{BackgroundScheduler, MemPressure, MemoryGovernor};
@@ -115,9 +117,40 @@ pub struct PluginCardDto {
     pub last_error: Option<String>,
 }
 
+/// Single place the kernel's state enum is mapped onto the wire enum.
+fn plugin_state(state: inkweave_api::registry::PluginRuntimeState) -> PluginStateDto {
+    use inkweave_api::registry::PluginRuntimeState;
+
+    match state {
+        PluginRuntimeState::Installed => PluginStateDto::Installed,
+        PluginRuntimeState::Pending => PluginStateDto::Pending,
+        PluginRuntimeState::Loading => PluginStateDto::Loading,
+        PluginRuntimeState::Active => PluginStateDto::Active,
+        PluginRuntimeState::Failed => PluginStateDto::Failed,
+        PluginRuntimeState::Unloading => PluginStateDto::Unloading,
+        PluginRuntimeState::Disposed => PluginStateDto::Disposed,
+    }
+}
+
+/// One plugin's lifecycle changed (§2.4).
+#[derive(Clone, Debug)]
+pub struct PluginStateChangeDto {
+    pub plugin_id: String,
+    pub state: PluginStateDto,
+}
+
+impl From<plugin_manager::PluginStateChange> for PluginStateChangeDto {
+    fn from(value: plugin_manager::PluginStateChange) -> Self {
+        Self {
+            plugin_id: value.plugin_id,
+            state: plugin_state(value.state),
+        }
+    }
+}
+
 impl From<inkweave_api::registry::PluginInfo> for PluginCardDto {
     fn from(value: inkweave_api::registry::PluginInfo) -> Self {
-        use inkweave_api::registry::{ContributionKind, PluginKind, PluginRuntimeState};
+        use inkweave_api::registry::{ContributionKind, PluginKind};
 
         Self {
             id: value.id,
@@ -127,15 +160,7 @@ impl From<inkweave_api::registry::PluginInfo> for PluginCardDto {
                 PluginKind::Internal => PluginKindDto::Internal,
                 PluginKind::Wasm => PluginKindDto::Wasm,
             },
-            state: match value.state {
-                PluginRuntimeState::Installed => PluginStateDto::Installed,
-                PluginRuntimeState::Pending => PluginStateDto::Pending,
-                PluginRuntimeState::Loading => PluginStateDto::Loading,
-                PluginRuntimeState::Active => PluginStateDto::Active,
-                PluginRuntimeState::Failed => PluginStateDto::Failed,
-                PluginRuntimeState::Unloading => PluginStateDto::Unloading,
-                PluginRuntimeState::Disposed => PluginStateDto::Disposed,
-            },
+            state: plugin_state(value.state),
             author: value.author,
             description: value.description,
             permissions: value.permissions.into(),
@@ -300,6 +325,33 @@ pub fn scheduler_tasks() -> Result<Vec<TaskSummary>, String> {
 /// Unfinished task count for one owner, used by the plugin card.
 pub fn unfinished_tasks(owner: String) -> Result<u32, String> {
     Ok(host::app().scheduler.unfinished(&owner))
+}
+
+/// Plugin lifecycle transitions, so the UI mirrors state instead of polling (§2.4).
+///
+/// Sourced from the kernel's ledger observer, not from the verbs below, so transitions with no API
+/// call behind them — a dependency appearing, a fiber being torn down — arrive here too.
+///
+/// Uses frb's `StreamSink` rather than returning `impl Stream`: 2.13 does not recognise a
+/// `Stream` return type, and silently treats the item type as unused.
+pub fn plugin_state_stream(sink: StreamSink<PluginStateChangeDto>) {
+    let mut receiver = host::app().registry.state_changes();
+    host::app().runtime.spawn(async move {
+        loop {
+            match receiver.recv().await {
+                Ok(change) => {
+                    // A closed sink means the Dart side stopped listening.
+                    if sink.add(PluginStateChangeDto::from(change)).is_err() {
+                        break;
+                    }
+                }
+                // A lagging subscriber missed transitions. Re-reading the snapshot is the UI's
+                // recovery, so skipping the gap beats tearing the stream down.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
 }
 
 #[cfg(test)]

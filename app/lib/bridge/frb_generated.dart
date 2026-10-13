@@ -68,7 +68,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1907570427;
+  int get rustContentHash => -198035323;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -96,6 +96,8 @@ abstract class RustLibApi extends BaseApi {
 
   Future<List<String>> crateApiPluginLog(
       {required String id, required int lines});
+
+  Stream<PluginStateChangeDto> crateApiPluginStateStream();
 
   Future<List<TaskSummary>> crateApiSchedulerTasks();
 
@@ -266,12 +268,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Stream<PluginStateChangeDto> crateApiPluginStateStream() {
+    final sink = RustStreamSink<PluginStateChangeDto>();
+    unawaited(handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_StreamSink_plugin_state_change_dto_Sse(sink, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 7, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiPluginStateStreamConstMeta,
+      argValues: [sink],
+      apiImpl: this,
+    )));
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiPluginStateStreamConstMeta => const TaskConstMeta(
+        debugName: "plugin_state_stream",
+        argNames: ["sink"],
+      );
+
+  @override
   Future<List<TaskSummary>> crateApiSchedulerTasks() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 7, port: port_);
+            funcId: 8, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_task_summary,
@@ -297,7 +325,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(id, serializer);
         sse_encode_bool(enabled, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 8, port: port_);
+            funcId: 9, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -321,7 +349,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(owner, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 9, port: port_);
+            funcId: 10, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_u_32,
@@ -345,7 +373,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(id, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 10, port: port_);
+            funcId: 11, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -361,6 +389,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         debugName: "uninstall_extension",
         argNames: ["id"],
       );
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<PluginStateChangeDto>
+      dco_decode_StreamSink_plugin_state_change_dto_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
 
   @protected
   String dco_decode_String(dynamic raw) {
@@ -492,6 +533,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PluginStateChangeDto dco_decode_plugin_state_change_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PluginStateChangeDto(
+      pluginId: dco_decode_String(arr[0]),
+      state: dco_decode_plugin_state_dto(arr[1]),
+    );
+  }
+
+  @protected
   PluginStateDto dco_decode_plugin_state_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return PluginStateDto.values[raw as int];
@@ -545,6 +598,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void dco_decode_unit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return;
+  }
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  RustStreamSink<PluginStateChangeDto>
+      sse_decode_StreamSink_plugin_state_change_dto_Sse(
+          SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
   }
 
   @protected
@@ -717,6 +785,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PluginStateChangeDto sse_decode_plugin_state_change_dto(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    final var_pluginId = sse_decode_String(deserializer);
+    final var_state = sse_decode_plugin_state_dto(deserializer);
+    return PluginStateChangeDto(pluginId: var_pluginId, state: var_state);
+  }
+
+  @protected
   PluginStateDto sse_decode_plugin_state_dto(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     final inner = sse_decode_i_32(deserializer);
@@ -775,6 +852,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_decode_unit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+  }
+
+  @protected
+  void sse_encode_AnyhowException(
+      AnyhowException self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_StreamSink_plugin_state_change_dto_Sse(
+      RustStreamSink<PluginStateChangeDto> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+        self.setupAndSerialize(
+            codec: SseCodec(
+          decodeSuccessData: sse_decode_plugin_state_change_dto,
+          decodeErrorData: sse_decode_AnyhowException,
+        )),
+        serializer);
   }
 
   @protected
@@ -910,6 +1007,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       PluginKindDto self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_plugin_state_change_dto(
+      PluginStateChangeDto self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.pluginId, serializer);
+    sse_encode_plugin_state_dto(self.state, serializer);
   }
 
   @protected

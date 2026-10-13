@@ -1,7 +1,15 @@
-use crate::fiber::{Fiber, FiberState};
+use crate::fiber::{Fiber, FiberId, FiberState};
 use crate::service::{ServiceKey, ServiceObj};
 use parking_lot::Mutex;
 use std::sync::{Arc, Weak};
+
+/// Called whenever a fiber changes state.
+///
+/// Registered by the host so it can forward transitions across an FFI boundary; the kernel stays
+/// unaware of any transport. Registering here rather than at the call sites is what makes
+/// *kernel-internal* transitions observable — a `Pending → Active` driven by a dependency appearing
+/// never passes through an API call, so nothing above the kernel could otherwise see it.
+pub type StateObserver = Arc<dyn Fn(FiberId, FiberState) + Send + Sync>;
 
 /// Registry of every fiber in the tree, plus the driver for reactive injection.
 ///
@@ -13,6 +21,7 @@ pub struct Ledger {
     /// Re-entrancy guard: `provide()` may be called from inside `apply()`, which itself runs
     /// inside `activate_pending()`. We must not recurse.
     activating: Mutex<bool>,
+    observers: Mutex<Vec<StateObserver>>,
 }
 
 impl Ledger {
@@ -22,6 +31,21 @@ impl Ledger {
 
     pub fn track(&self, fiber: &Arc<Fiber>) {
         self.fibers.lock().push(Arc::downgrade(fiber));
+    }
+
+    /// Register a state observer. Observers are called from whatever thread performed the
+    /// transition, so they must be cheap and must not block.
+    pub fn observe(&self, observer: StateObserver) {
+        self.observers.lock().push(observer);
+    }
+
+    /// Notify observers, snapshotting the list first: an observer that re-enters the ledger must
+    /// not deadlock on the lock we would otherwise still hold.
+    pub fn notify_state(&self, id: FiberId, state: FiberState) {
+        let observers: Vec<StateObserver> = self.observers.lock().clone();
+        for observer in observers {
+            observer(id, state);
+        }
     }
 
     /// Number of fibers still alive (Pending/Loading/Active/Failed/Unloading).

@@ -45,4 +45,7 @@ class FrbPluginRepository implements PluginRepository {
 
   @override
   Future<List<TaskSummary>> tasks() => schedulerTasks();
+
+  @override
+  Stream<PluginStateChangeDto> stateChanges() => pluginStateStream();
 }

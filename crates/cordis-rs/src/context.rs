@@ -1,8 +1,8 @@
 use crate::events::{
     payload, EventBus, EventName, ListenerId, Next, Payload, TypedBail, TypedEmit, TypedWaterfall,
 };
-use crate::fiber::{sync_disposer, Disposer, Fiber, FiberState};
-use crate::ledger::Ledger;
+use crate::fiber::{sync_disposer, Disposer, Fiber, FiberId, FiberState};
+use crate::ledger::{Ledger, StateObserver};
 use crate::plugin::{Plugin, PluginError, Result};
 use crate::service::{downcast, ServiceKey, ServiceObj, ServiceTable};
 use arc_swap::ArcSwap;
@@ -309,5 +309,19 @@ impl Context {
     /// Number of fibers currently tracked by the tree (used by the disposer audit in tests).
     pub fn tracked_fibers(&self) -> usize {
         self.ledger.tracked_count()
+    }
+
+    /// Observe every fiber state transition in this tree.
+    ///
+    /// This is the seam the lifecycle bridge (DEV guide §2.4) is built on: the host registers one
+    /// observer and forwards transitions to the UI, so `Pending`/`Loading`/`Unloading`/`Disposed`
+    /// are visible even when nothing called an API.
+    pub fn observe_fiber_states(&self, observer: StateObserver) {
+        self.ledger.observe(observer);
+    }
+
+    /// Called by [`Fiber::set_state`]; not part of the plugin-facing API.
+    pub fn notify_fiber_state(&self, id: FiberId, state: FiberState) {
+        self.ledger.notify_state(id, state);
     }
 }

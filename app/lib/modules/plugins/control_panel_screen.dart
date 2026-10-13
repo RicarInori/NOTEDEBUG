@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -28,11 +30,34 @@ class _ControlPanelScreenState extends State<ControlPanelScreen> {
   MemorySummary _memory =
       const MemorySummary(processUsedMb: 0, pressure: 'none', overBudget: []);
   bool _loading = true;
+  StreamSubscription<PluginStateChangeDto>? _stateEvents;
+
+  /// States worth re-reading the snapshot for. A single enable walks
+  /// `Pending → Loading → Active`, and there is nothing new to show until it lands.
+  static const _settledStates = {
+    PluginStateDto.active,
+    PluginStateDto.failed,
+    PluginStateDto.installed,
+    PluginStateDto.disposed,
+  };
 
   @override
   void initState() {
     super.initState();
     _refresh();
+
+    // Mirror kernel transitions instead of polling: a plugin can change state without this screen
+    // asking it to (a dependency arriving, a fiber being torn down by the host).
+    _stateEvents = widget.repository.stateChanges().listen((change) {
+      if (!mounted) return;
+      if (_settledStates.contains(change.state)) _refresh();
+    });
+  }
+
+  @override
+  void dispose() {
+    _stateEvents?.cancel();
+    super.dispose();
   }
 
   Future<void> _refresh() async {

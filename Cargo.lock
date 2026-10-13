@@ -632,6 +632,7 @@ dependencies = [
  "inkweave-api",
  "parking_lot",
  "serde",
+ "tokio",
  "toml",
 ]
 

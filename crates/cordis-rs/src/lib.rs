@@ -43,5 +43,6 @@ pub mod service;
 pub use context::{Context, ContextId};
 pub use events::{EventBus, EventName, Payload};
 pub use fiber::{sync_disposer, Disposer, EffectStack, Fiber, FiberId, FiberState};
+pub use ledger::StateObserver;
 pub use plugin::{FnPlugin, Plugin, PluginError, Result};
 pub use service::{ServiceKey, ServiceObj, ServiceTable};

@@ -5,7 +5,7 @@
 //! (`Pending` → `Active` on provide, and provider replacement restarting dependents).
 
 use async_trait::async_trait;
-use cordis_rs::fiber::FiberState;
+use cordis_rs::fiber::{FiberId, FiberState};
 use cordis_rs::{Context, Plugin, Result, ServiceKey};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -236,6 +236,53 @@ async fn provider_replacement_restarts_dependents() {
         dependent.state(),
         FiberState::Pending,
         "removing the provider sends dependents back to Pending"
+    );
+}
+
+#[tokio::test]
+async fn observers_see_every_transition_including_dependency_driven_ones() {
+    let root = Context::root();
+    let seen: Arc<Mutex<Vec<(FiberId, FiberState)>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    root.observe_fiber_states(Arc::new(move |id, state| {
+        sink.lock().expect("sink").push((id, state));
+    }));
+
+    // Mounting a plugin whose dependency is absent leaves it Pending.
+    let fiber = root
+        .plugin(Arc::new(MissingDependencyPlugin))
+        .await
+        .expect("mount");
+    let id = fiber.id();
+    assert_eq!(fiber.state(), FiberState::Pending);
+
+    // The provider appears. This transition happens *inside* the kernel with no API call behind it —
+    // exactly the case a host-level hook would miss, and the reason observation lives in the ledger.
+    root.provide(MISSING, 7u8).await;
+    assert_eq!(fiber.state(), FiberState::Active);
+
+    // Unload: `Unloading`, then `Disposed` — the latter after the context slot was cleared to break
+    // the Context↔Fiber cycle, so it is the transition most likely to be dropped.
+    root.unload(&fiber).await;
+
+    let states: Vec<FiberState> = seen
+        .lock()
+        .expect("sink")
+        .iter()
+        .filter(|(observed, _)| *observed == id)
+        .map(|(_, state)| *state)
+        .collect();
+
+    assert_eq!(
+        states,
+        vec![
+            FiberState::Pending,
+            FiberState::Loading,
+            FiberState::Active,
+            FiberState::Unloading,
+            FiberState::Disposed,
+        ],
+        "every transition must reach the observer, in order"
     );
 }
 

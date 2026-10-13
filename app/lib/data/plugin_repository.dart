@@ -25,6 +25,12 @@ abstract class PluginRepository {
   Future<MemorySummary> memory();
 
   Future<List<TaskSummary>> tasks();
+
+  /// Kernel lifecycle transitions, so the control panel mirrors state instead of polling (§2.4).
+  ///
+  /// Comes from the kernel's ledger observer, so it also carries transitions with no API call
+  /// behind them — a dependency appearing, a fiber being torn down.
+  Stream<PluginStateChangeDto> stateChanges();
 }
 
 /// In-memory stand-in mirroring the preset plugins the Rust host registers at bootstrap.
@@ -195,4 +201,8 @@ class DemoPluginRepository implements PluginRepository {
             intervalMinutes: 15,
             requiresUnmetered: true),
       ];
+
+  /// Nothing changes state on its own here — every transition follows one of the calls above.
+  @override
+  Stream<PluginStateChangeDto> stateChanges() => const Stream.empty();
 }

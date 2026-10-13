@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inkweave/bridge/api.dart';
@@ -34,6 +36,14 @@ Future<void> pumpPanel(WidgetTester tester, PluginRepository repository) async {
 
   await tester.pumpWidget(MaterialApp(home: ControlPanelScreen(repository: repository)));
   await settle(tester);
+}
+
+/// A repository whose state stream the test can drive, standing in for the kernel's ledger observer.
+class StreamingRepository extends DemoPluginRepository {
+  final controller = StreamController<PluginStateChangeDto>.broadcast();
+
+  @override
+  Stream<PluginStateChangeDto> stateChanges() => controller.stream;
 }
 
 void main() {
@@ -95,6 +105,24 @@ void main() {
       await settle(tester);
 
       expect(find.textContaining('尚未提供可用的界面'), findsOneWidget);
+    });
+
+    testWidgets('a kernel state change refreshes the panel without any user action',
+        (tester) async {
+      final repository = StreamingRepository();
+      addTearDown(repository.controller.close);
+      await pumpPanel(tester, repository);
+
+      // Something outside this screen changes the registry — a dependency arriving, the host
+      // tearing a fiber down. The panel must follow without the user touching anything.
+      await repository.setEnabled('stylus-generic', false);
+      repository.controller.add(const PluginStateChangeDto(
+        pluginId: 'stylus-generic',
+        state: PluginStateDto.disposed,
+      ));
+      await settle(tester);
+
+      expect(find.textContaining('启用 7 个'), findsOneWidget);
     });
 
     testWidgets('uninstall is offered only for WASM extensions', (tester) async {

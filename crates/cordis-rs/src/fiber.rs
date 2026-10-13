@@ -159,8 +159,19 @@ impl Fiber {
     }
 
     /// Only the kernel may transition states; exposed for the ledger and tests.
+    ///
+    /// Every transition is forwarded to the ledger's observers, so a host can mirror plugin state
+    /// without polling — including transitions with no API call behind them, such as the
+    /// dependency-driven `Pending → Active`.
     pub fn set_state(&self, next: FiberState) {
+        self.transition(next, self.ctx());
+    }
+
+    fn transition(&self, next: FiberState, ctx: Option<Arc<Context>>) {
         self.state.store(next.to_u8(), Ordering::Release);
+        if let Some(ctx) = ctx {
+            ctx.notify_fiber_state(self.id, next);
+        }
     }
 
     pub fn attach_ctx(&self, ctx: Arc<Context>) {
@@ -233,11 +244,14 @@ impl Fiber {
         if self.state() == FiberState::Disposed {
             return;
         }
-        self.set_state(FiberState::Unloading);
+        // Read the context up front: it is cleared below to break the cycle, and the final
+        // `Disposed` transition must still be observable after that.
+        let ctx = self.ctx();
+        self.transition(FiberState::Unloading, ctx.clone());
         self.recover().await;
         self.plugin.lock().take();
         self.resolved.lock().clear();
         self.ctx.lock().take();
-        self.set_state(FiberState::Disposed);
+        self.transition(FiberState::Disposed, ctx);
     }
 }

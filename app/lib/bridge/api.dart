@@ -6,7 +6,8 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These functions are ignored because they are not marked as `pub`: `plugin_state`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`, `from`
 
 /// Initialise the host. Must be called before any other function; idempotent.
 Future<void> bootstrapHost({required String dataDir}) =>
@@ -20,6 +21,9 @@ Future<List<PluginCardDto>> pluginCards() =>
     RustLib.instance.api.crateApiPluginCards();
 
 /// Enable or disable a plugin. This is the "hot load / shutdown" verb pair of ADR-007.
+///
+/// A successful change is remembered on disk, so the choice survives a restart — `bootstrap` reads
+/// the same file and leaves disabled presets alone.
 Future<void> setPluginEnabled({required String id, required bool enabled}) =>
     RustLib.instance.api.crateApiSetPluginEnabled(id: id, enabled: enabled);
 
@@ -53,6 +57,16 @@ Future<List<TaskSummary>> schedulerTasks() =>
 /// Unfinished task count for one owner, used by the plugin card.
 Future<int> unfinishedTasks({required String owner}) =>
     RustLib.instance.api.crateApiUnfinishedTasks(owner: owner);
+
+/// Plugin lifecycle transitions, so the UI mirrors state instead of polling (§2.4).
+///
+/// Sourced from the kernel's ledger observer, not from the verbs below, so transitions with no API
+/// call behind them — a dependency appearing, a fiber being torn down — arrive here too.
+///
+/// Uses frb's `StreamSink` rather than returning `impl Stream`: 2.13 does not recognise a
+/// `Stream` return type, and silently treats the item type as unused.
+Stream<PluginStateChangeDto> pluginStateStream() =>
+    RustLib.instance.api.crateApiPluginStateStream();
 
 class ContributionDto {
   final String id;
@@ -214,6 +228,28 @@ enum PluginKindDto {
   internal,
   wasm,
   ;
+}
+
+/// One plugin's lifecycle changed (§2.4).
+class PluginStateChangeDto {
+  final String pluginId;
+  final PluginStateDto state;
+
+  const PluginStateChangeDto({
+    required this.pluginId,
+    required this.state,
+  });
+
+  @override
+  int get hashCode => pluginId.hashCode ^ state.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PluginStateChangeDto &&
+          runtimeType == other.runtimeType &&
+          pluginId == other.pluginId &&
+          state == other.state;
 }
 
 enum PluginStateDto {

@@ -8,7 +8,7 @@
 //! what keeps mounted plugins alive. The kernel's ledger only tracks `Weak` references.
 
 use async_trait::async_trait;
-use cordis_rs::{Context, Fiber, Plugin, PluginError};
+use cordis_rs::{Context, Fiber, FiberId, FiberState, Plugin, PluginError};
 use inkweave_api::registry::{
     InstallRequest, Permissions, PluginInfo, PluginRegistry, PluginRuntimeState, RegistryError,
 };
@@ -20,6 +20,10 @@ use std::sync::Arc;
 
 /// The contract version an extension must target (DEV guide §7.1 `inkweave_abi_v1`).
 pub const SUPPORTED_ABI: &str = "inkweave_abi_v1";
+
+/// How many state transitions a subscriber may fall behind before it is told it lagged. Small on
+/// purpose: the payload is two words, and a UI that lags this far should re-read the snapshot anyway.
+const STATE_CHANNEL_CAPACITY: usize = 64;
 
 /// `[plugin]` section of an extension manifest (DEV guide §7.2).
 #[derive(Debug, serde::Deserialize)]
@@ -91,16 +95,63 @@ pub struct PluginManager {
     entries: Mutex<Vec<Entry>>,
     logs: Mutex<HashMap<String, VecDeque<String>>>,
     max_log_lines: usize,
+    state_tx: tokio::sync::broadcast::Sender<PluginStateChange>,
+}
+
+/// A state transition worth telling the UI about.
+#[derive(Clone, Debug)]
+pub struct PluginStateChange {
+    pub plugin_id: String,
+    pub state: PluginRuntimeState,
 }
 
 impl PluginManager {
     pub fn new(root: Arc<Context>) -> Arc<Self> {
-        Arc::new(Self {
-            root,
+        let (state_tx, _) = tokio::sync::broadcast::channel(STATE_CHANNEL_CAPACITY);
+        let manager = Arc::new(Self {
+            root: root.clone(),
             entries: Mutex::new(Vec::new()),
             logs: Mutex::new(HashMap::new()),
             max_log_lines: 200,
-        })
+            state_tx,
+        });
+
+        // Mirror every fiber transition so the UI does not have to poll — including transitions with
+        // no API call behind them, such as the dependency-driven `Pending → Active`.
+        //
+        // The observer holds a *weak* handle: the ledger outlives the manager in principle, and a
+        // strong one would form the cycle manager → root → ledger → observer → manager.
+        let weak = Arc::downgrade(&manager);
+        root.observe_fiber_states(Arc::new(move |fiber_id, state| {
+            if let Some(manager) = weak.upgrade() {
+                manager.publish_state_change(fiber_id, state);
+            }
+        }));
+
+        manager
+    }
+
+    /// Subscribe to state transitions. Each subscriber gets its own cursor; a slow one may lag and
+    /// will be told so rather than blocking the kernel.
+    pub fn state_changes(&self) -> tokio::sync::broadcast::Receiver<PluginStateChange> {
+        self.state_tx.subscribe()
+    }
+
+    fn publish_state_change(&self, fiber_id: FiberId, state: FiberState) {
+        let plugin_id = {
+            let entries = self.entries.lock();
+            entries
+                .iter()
+                .find(|entry| entry.fiber.as_ref().map(|fiber| fiber.id()) == Some(fiber_id))
+                .map(|entry| entry.info.id.clone())
+        };
+        if let Some(plugin_id) = plugin_id {
+            // Fails only when nobody is subscribed, which is normal before the UI attaches.
+            let _ = self.state_tx.send(PluginStateChange {
+                plugin_id,
+                state: state.into(),
+            });
+        }
     }
 
     /// Register a first-party internal module. Called by the composition root during bootstrap.

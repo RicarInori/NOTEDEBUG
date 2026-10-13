@@ -41,6 +41,16 @@ One structural decision worth knowing: the bridge types from `bridge/api.dart` a
 by the UI, with UI-only conveniences added as extensions (`plugin_extensions.dart`). There is no
 second model to keep in sync — that duplication is exactly what the generator removes.
 
+Two frb details that cost time and are easy to get wrong:
+
+- **`mirror` is not a v2 config key.** A type from another crate can only be brought in with the
+  `#[frb(mirror(...))]` attribute, which re-lists every field. The API module therefore declares its
+  own wire DTOs and converts — zero config, and the wire shape cannot drift with an internal type.
+- **`StreamSink` is generated into your crate, not exported by the library.** It comes from
+  `frb_generated_stream_sink!` inside `frb_generated.rs`, so the import is `crate::frb_generated::StreamSink`.
+  And frb 2.13 does not recognise an `impl Stream` *return* type — it silently treats the item type
+  as unused, which is a confusing failure mode.
+
 Five real defects surfaced during the first build, which is the point of having a build:
 
 | What broke | Why |
@@ -73,6 +83,7 @@ instead.
 | Rust host inside the APK | **Yes** — `cargo ndk` cross-compiles `libinkweave_bridge.so` for `arm64-v8a` and `x86_64`; the Gradle `buildRustHost` task runs before `preBuild` |
 | Plugin enable state | **Persisted** — `HostStateStore` writes `disabled-plugins.txt` under the app support directory and `bootstrap` honours it. Verified on the emulator: disable → force-stop → cold launch still shows the plugin disabled, and deleting the file restores the defaults |
 | Contribution entry points | **Wired** — `ContributionRegistry` maps a declared contribution id to a Flutter screen, since rendering is Flutter's job (ADR-001). A contribution with no registered screen is reported plainly instead of showing a dead button |
+| Lifecycle state stream (§2.4) | **Wired** — the kernel's ledger notifies a state observer on *every* transition, including the dependency-driven `Pending → Active` and the final `Disposed` after the context cycle is broken; `plugin-manager` broadcasts it and the bridge exposes a Dart `Stream` the panel listens to |
 | Third-party contribution UI | **Open question** — the contract declares `{id, title, kind}` and nothing more. §8.3 wants the host to render all management UI, which needs a declarative UI schema in the contract; until then only first-party plugins can contribute a screen |
 | Spike-0 latency proof (ADR-002 gate) | **Not started — the gate before M1** |
 
