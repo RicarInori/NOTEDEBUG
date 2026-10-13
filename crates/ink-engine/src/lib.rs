@@ -30,6 +30,7 @@
 pub mod erase;
 pub mod geometry;
 pub mod index;
+pub mod mesh;
 pub mod pipeline;
 pub mod select;
 pub mod stroke;
@@ -44,6 +45,7 @@ use std::sync::Arc;
 
 pub use erase::{EraserMode, EraserPath};
 pub use index::{StrokeIndex, GRID_CELL_PX};
+pub use mesh::{mesh_stroke, MeshVertex, StrokeMesh, ROUND_SEGMENTS};
 pub use pipeline::{resample_equidistant, width_for, OneEuroFilter};
 pub use select::SelectShape;
 pub use stroke::{PageId, Stroke, StrokeId, StrokePoint};
